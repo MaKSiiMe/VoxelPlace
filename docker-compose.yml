@@ -1,0 +1,12 @@
+services:
+  voxelplace-api:
+    build: ./voxelplace-api
+    container_name: voxelplace-api
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      REDIS_URL: "redis://192.168.68.51:6379"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      TEST_USERNAMES: "${TEST_USERNAMES:-}"
