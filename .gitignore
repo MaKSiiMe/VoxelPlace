@@ -1,0 +1,22 @@
+# Dépendances
+node_modules/
+
+# Variables d'environnement
+.env
+.env.local
+
+# Build frontend
+dist/
+
+# Build Java/Maven
+target/
+*.class
+
+# Logs
+*.log
+
+# Outils de développement local
+.vscode/
+.claude/
+CLAUDE.md
+RNCP_Docs/

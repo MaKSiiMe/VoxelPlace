@@ -1,0 +1,18 @@
+name: VoxelPlace
+version: '1.0.0'
+main: fr.voxelplace.minecraft.VoxelPlacePlugin
+api-version: '1.21'
+authors: [ VoxelPlace ]
+description: Canvas collaboratif cross-platform — inspiré de r/place
+
+commands:
+  vp:
+    description: Commandes VoxelPlace
+    usage: /vp <setup|fill|reload|info>
+    aliases: [ voxelplace ]
+    permission: voxelplace.admin
+
+permissions:
+  voxelplace.admin:
+    description: Accès aux commandes admin VoxelPlace
+    default: op
