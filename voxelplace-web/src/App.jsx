@@ -13,7 +13,7 @@ const DEFAULT_COLORS = [
 // Key 1→colorId 0, Key 2→colorId 5, ..., Key 8→colorId 1
 const KEY_TO_COLOR = [0, 5, 6, 2, 3, 4, 7, 1]
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API = import.meta.env.VITE_API_URL || window.location.origin
 
 const PLATFORM_ICONS = {
   web:       '🌐',
