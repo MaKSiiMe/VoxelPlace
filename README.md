@@ -559,24 +559,37 @@ cd voxelplace-api && npm start
 VoxelPlace/
 ├── .github/workflows/
 │   └── deploy.yml                   # CI/CD — déploiement automatique sur push main
-├── docker-compose.yml               # Orchestration Docker pour l'API
+├── docker-compose.yml               # Orchestration Docker (API + frontend)
+├── docs/
+│   └── uml/
+│       ├── class-diagram.md         # Diagramme de classes (MermaidJS)
+│       ├── use-case.md              # Diagramme de cas d'utilisation
+│       ├── sequence-diagram.md      # Diagrammes de séquence (3 scénarios)
+│       ├── deployment-diagram.md    # Architecture de déploiement
+│       └── erd-merise.md            # ERD + MCD/MLD Merise + justification Redis
 ├── voxelplace-api/                  # Backend Fastify + Socket.io
 │   ├── src/
 │   │   ├── index.js                 # Serveur, routes REST, événements Socket.io
-│   │   └── grid.js                  # Couche Redis (buffer binaire + HSET)
+│   │   ├── grid.js                  # Couche Redis (buffer binaire + HSET)
+│   │   └── utils.js                 # Fonctions pures : validation, sanitisation
+│   ├── tests/
+│   │   ├── validation.test.js       # 18 tests — isValidCoord, sanitize, validatePixel
+│   │   └── grid.test.js             # 6 tests — getPixelIndex, GRID_SIZE
 │   ├── .env                         # REDIS_URL, PORT, ADMIN_PASSWORD, TEST_USERNAMES
 │   ├── .env.example
-│   └── package.json
+│   └── package.json                 # script: npm test
 │
 ├── voxelplace-web/                  # Frontend React + Vite
 │   ├── src/
-│   │   ├── App.jsx                  # Composant racine, logique socket, mode admin
+│   │   ├── App.jsx                  # Composant racine, socket, admin, RGPD banner
 │   │   ├── socket.js                # Instance Socket.io partagée
 │   │   └── components/
-│   │       ├── GridCanvas.jsx       # Canvas HTML5, zoom/pan, overlay hover
+│   │       ├── GridCanvas.jsx       # Canvas HTML5, zoom/pan, hover tooltip
 │   │       ├── ColorPicker.jsx      # Palette 8 couleurs avec raccourcis clavier
 │   │       └── PixelModal.jsx       # Fiche pixel (inspection + suppression admin)
-│   ├── index.html
+│   ├── Dockerfile                   # Build Vite → nginx
+│   ├── nginx.conf                   # Proxy /api et /socket.io vers l'API
+│   ├── index.html                   # SEO : title, meta description, Open Graph
 │   ├── vite.config.js
 │   └── package.json
 │
@@ -585,8 +598,8 @@ VoxelPlace/
     │   ├── VoxelPlacePlugin.java    # Point d'entrée Bukkit
     │   ├── CanvasManager.java       # Dessin des blocs, mapping colorId ↔ Material
     │   ├── SocketManager.java       # Client Socket.io, events grid:init / pixel:update
-    │   ├── CanvasListener.java      # Événements Bukkit (clic droit, destruction)
-    │   └── VoxelCommand.java        # Commandes /vp setup|fill|reload|info
+    │   ├── CanvasListener.java      # Clic droit, destruction, action bar (PlayerMove)
+    │   └── VoxelCommand.java        # /vp setup|fill|reload|info|help
     ├── src/main/resources/
     │   ├── plugin.yml
     │   └── config.yml

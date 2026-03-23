@@ -97,3 +97,58 @@ button, input {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Welcome card pleine largeur sur mobile */
+  .vp-welcome-card {
+    min-width: unset !important;
+    width: calc(100vw - 32px) !important;
+    padding: 28px 20px !important;
+  }
+
+  /* Admin modal responsive */
+  .vp-admin-modal {
+    min-width: unset !important;
+    width: calc(100vw - 32px) !important;
+    max-width: 400px;
+    padding: 24px 20px !important;
+  }
+
+  /* Header : masquer le dernier pixel et le compteur joueurs */
+  .vp-header-center,
+  .vp-player-count {
+    display: none !important;
+  }
+
+  /* Header : réduire les gaps */
+  .vp-header {
+    gap: 8px !important;
+    padding: 0 12px !important;
+  }
+
+  /* Toolbar : réduire padding, cacher le hint, swatches plus petits */
+  .vp-toolbar {
+    padding: 0 10px !important;
+    gap: 6px !important;
+    overflow-x: auto;
+  }
+
+  .vp-hint {
+    display: none !important;
+  }
+
+  /* Bandeau RGPD en colonne sur mobile */
+  .vp-cookie-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 10px 14px !important;
+  }
+}
+
+/* Focus visible pour la navigation clavier */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

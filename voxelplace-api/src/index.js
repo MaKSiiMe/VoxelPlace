@@ -4,9 +4,13 @@ import cors from '@fastify/cors'
 import { Server } from 'socket.io'
 import Redis from 'ioredis'
 import { loadGrid, setPixel, getPixelMeta, GRID_SIZE } from './grid.js'
+import { isValidCoord, sanitizeUsername, validatePixel } from './utils.js'
+import { authRoutes } from './auth.js'
+import { pool, connectWithRetry } from './db.js'
 
 const PORT       = parseInt(process.env.PORT || '3001', 10)
 const REDIS_URL  = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
 
 // Comptes sans cooldown (ex: comptes de test ou bots internes)
 const TEST_USERNAMES = new Set(
@@ -33,6 +37,9 @@ redis.on('error',   (err) => console.error('[Redis] Erreur :', err.message))
 // --- Fastify ---
 const fastify = Fastify({ logger: false })
 await fastify.register(cors, { origin: '*', methods: ['GET', 'POST'] })
+
+// --- Auth routes (PostgreSQL) ---
+await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
 
 // --- Socket.io ---
 const io = new Server(fastify.server, {
@@ -72,32 +79,7 @@ fastify.get('/api/pixel/:x/:y', async (req, reply) => {
   reply.send(meta || { x, y, colorId: 0, username: null, source: null })
 })
 
-// --- Helpers de validation ---
-function isValidCoord(v) {
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 63
-}
-
-function sanitizeUsername(raw) {
-  return raw
-    .replace(/[<>"'`]/g, '')
-    .replace(/[\x00-\x1F\x7F]/g, '')
-    .trim()
-    .slice(0, 32)
-}
-
-function validatePixel(data) {
-  const { x, y, colorId, username, source } = data || {}
-  if (!isValidCoord(x) || !isValidCoord(y)) return null
-  if (typeof colorId !== 'number' || !Number.isInteger(colorId) || colorId < 0 || colorId > 7) return null
-  if (typeof username !== 'string') return null
-  const cleanUsername = sanitizeUsername(username)
-  if (cleanUsername.length === 0) return null
-  return {
-    x, y, colorId,
-    username: cleanUsername,
-    source: typeof source === 'string' ? source.replace(/[<>"'`]/g, '').slice(0, 64) : 'web',
-  }
-}
+// --- Helpers de validation (voir src/utils.js) ---
 
 // --- Rate limiting ---
 const lastPlaced = new Map()
@@ -224,6 +206,7 @@ io.on('connection', async (socket) => {
 
 // --- Démarrage ---
 try {
+  await connectWithRetry()
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
   console.log(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
   if (TEST_USERNAMES.size > 0) {

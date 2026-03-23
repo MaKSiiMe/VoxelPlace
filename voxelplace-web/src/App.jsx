@@ -46,57 +46,202 @@ const pc = {
   num:   { color: 'var(--text-2)', fontWeight: 600 },
 }
 
-// ─── Modale de choix de pseudo ───────────────────────────────────────────────
-function UsernameScreen({ onConfirm }) {
-  const [value, setValue] = useState('')
-  const [shaking, setShaking] = useState(false)
+// ─── Bandeau RGPD ────────────────────────────────────────────────────────────
+function CookieBanner() {
+  const [visible, setVisible] = useState(() => !localStorage.getItem('vp_rgpd'))
+  if (!visible) return null
+  return (
+    <div role="alert" aria-live="polite" style={s.cookieBanner} className="vp-cookie-banner">
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)' }}>
+        Ce site mémorise votre pseudo en <strong>localStorage</strong> et stocke vos pixels sur le serveur.
+        Aucun cookie tiers ni tracking.{' '}
+        <a href="https://www.cnil.fr/fr/rgpd-de-quoi-parle-t-on" target="_blank" rel="noopener noreferrer"
+          style={{ color: 'var(--accent)' }}>En savoir plus</a>
+      </p>
+      <button
+        style={{ ...s.btnSm, flexShrink: 0 }}
+        onClick={() => { localStorage.setItem('vp_rgpd', '1'); setVisible(false) }}
+        aria-label="Accepter et fermer le bandeau"
+      >
+        Compris ✓
+      </button>
+    </div>
+  )
+}
 
-  function handleSubmit(e) {
+// ─── Écran d'authentification ─────────────────────────────────────────────────
+function AuthScreen({ onConfirm }) {
+  const [tab, setTab]           = useState('anon')  // 'anon' | 'login' | 'register'
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm]   = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [shaking, setShaking]   = useState(false)
+
+  const API = import.meta.env.VITE_API_URL || window.location.origin
+
+  function shake() { setShaking(true); setTimeout(() => setShaking(false), 400) }
+
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (!value.trim()) {
-      setShaking(true)
-      setTimeout(() => setShaking(false), 400)
+    setError('')
+
+    // ── Anonyme ──
+    if (tab === 'anon') {
+      if (!username.trim()) { shake(); return }
+      onConfirm(username.trim(), null)
       return
     }
-    onConfirm(value.trim())
+
+    // ── Connexion / Inscription ──
+    if (!username.trim() || !password) { shake(); return }
+    if (tab === 'register' && password !== confirm) {
+      setError('Les mots de passe ne correspondent pas')
+      shake(); return
+    }
+
+    setLoading(true)
+    try {
+      const endpoint = tab === 'login' ? '/api/auth/login' : '/api/auth/register'
+      const res  = await fetch(`${API}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Erreur serveur'); shake(); return }
+      onConfirm(data.username, data.token)
+    } catch {
+      setError('Impossible de contacter le serveur')
+      shake()
+    } finally {
+      setLoading(false)
+    }
   }
+
+  function switchTab(t) { setTab(t); setError(''); setPassword(''); setConfirm('') }
+
+  const TABS = [
+    { id: 'anon',     label: '👤 Anonyme' },
+    { id: 'login',    label: '🔑 Connexion' },
+    { id: 'register', label: '✨ Créer un compte' },
+  ]
 
   return (
     <div style={s.overlay} className="fade-in">
-      <form onSubmit={handleSubmit} style={s.welcomeCard} className="fade-up">
-        <div style={s.welcomeLogo}>🎨</div>
-        <h1 style={s.welcomeTitle}>VoxelPlace</h1>
+      <form
+        onSubmit={handleSubmit}
+        style={s.welcomeCard}
+        className={`fade-up vp-welcome-card${shaking ? ' shake' : ''}`}
+        aria-labelledby="welcome-title"
+      >
+        <div style={s.welcomeLogo} aria-hidden="true">🎨</div>
+        <h1 id="welcome-title" style={s.welcomeTitle}>VoxelPlace</h1>
         <p style={s.welcomeSub}>Canvas collaboratif 64×64 en temps réel</p>
 
-        <div style={{ width: '100%', position: 'relative' }}>
-          <input
-            style={s.input}
-            placeholder="Choisissez un pseudo…"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            maxLength={32}
-            autoFocus
-            className={shaking ? 'shake' : ''}
-          />
-          <span style={s.charCount}>{value.length}/32</span>
+        {/* Onglets */}
+        <div style={authS.tabs} role="tablist">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              style={{ ...authS.tab, ...(tab === t.id ? authS.tabActive : {}) }}
+              onClick={() => switchTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        <button style={s.btnAccent} type="submit">
-          Jouer →
+        {/* Pseudo */}
+        <div style={{ width: '100%', position: 'relative' }}>
+          <label htmlFor="vp-username" style={s.srOnly}>Pseudo</label>
+          <input
+            id="vp-username"
+            style={s.input}
+            placeholder="Pseudo…"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            maxLength={32}
+            autoFocus
+            autoComplete="username"
+            aria-required="true"
+          />
+          <span style={s.charCount} aria-live="polite">{username.length}/32</span>
+        </div>
+
+        {/* Mot de passe (login + register) */}
+        {tab !== 'anon' && (
+          <>
+            <div style={{ width: '100%' }}>
+              <label htmlFor="vp-password" style={s.srOnly}>Mot de passe</label>
+              <input
+                id="vp-password"
+                type="password"
+                style={s.input}
+                placeholder="Mot de passe (6 caractères min.)…"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                aria-required="true"
+              />
+            </div>
+            {tab === 'register' && (
+              <div style={{ width: '100%' }}>
+                <label htmlFor="vp-confirm" style={s.srOnly}>Confirmer le mot de passe</label>
+                <input
+                  id="vp-confirm"
+                  type="password"
+                  style={s.input}
+                  placeholder="Confirmer le mot de passe…"
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  aria-required="true"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {error && (
+          <p role="alert" style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>{error}</p>
+        )}
+
+        <button style={s.btnAccent} type="submit" disabled={loading}>
+          {loading ? '…' : tab === 'anon' ? 'Jouer →' : tab === 'login' ? 'Se connecter' : 'Créer mon compte'}
         </button>
 
-        <div style={s.platforms}>
-          <span title="Web">🌐</span>
-          <span style={s.platformDot} />
-          <span title="Minecraft">⛏</span>
-          <span style={s.platformDot} />
-          <span title="Roblox">🎮</span>
-          <span style={s.platformDot} />
-          <span title="Hytale">🏔</span>
+        <div style={s.platforms} aria-label="Plateformes compatibles">
+          <span title="Web" aria-label="Web">🌐</span>
+          <span style={s.platformDot} aria-hidden="true" />
+          <span title="Minecraft" aria-label="Minecraft">⛏</span>
+          <span style={s.platformDot} aria-hidden="true" />
+          <span title="Roblox" aria-label="Roblox">🎮</span>
+          <span style={s.platformDot} aria-hidden="true" />
+          <span title="Hytale" aria-label="Hytale">🏔</span>
         </div>
       </form>
     </div>
   )
+}
+
+const authS = {
+  tabs: {
+    display: 'flex', width: '100%', borderRadius: 'var(--r-sm)',
+    overflow: 'hidden', border: '1px solid var(--border-2)',
+  },
+  tab: {
+    flex: 1, padding: '7px 4px', fontSize: 11, fontWeight: 600,
+    background: 'var(--surface-2)', border: 'none', color: 'var(--text-2)',
+    cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+  },
+  tabActive: {
+    background: 'var(--accent)', color: '#fff',
+  },
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
@@ -106,8 +251,9 @@ export default function App() {
   const [gridSize, setGridSize]       = useState(64)
   const [colors, setColors]           = useState(DEFAULT_COLORS)
   const [selectedColor, setSelectedColor] = useState(2)
-  const [username, setUsername]       = useState(() => localStorage.getItem('vp_username') || '')
-  const [usernameSet, setUsernameSet] = useState(() => !!localStorage.getItem('vp_username'))
+  const [username, setUsername]           = useState(() => localStorage.getItem('vp_username') || '')
+  const [usernameSet, setUsernameSet]     = useState(() => !!localStorage.getItem('vp_username'))
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem('vp_token'))
   const [editingUsername, setEditingUsername] = useState(false)
   const [editValue, setEditValue]     = useState('')
   const [lastPixel, setLastPixel]     = useState(null)
@@ -265,8 +411,10 @@ export default function App() {
   }
 
   // ── Username ─────────────────────────────────────────────────────────────
-  const handleUsernameConfirm = (val) => {
+  const handleUsernameConfirm = (val, token) => {
     localStorage.setItem('vp_username', val)
+    if (token) { localStorage.setItem('vp_token', token); setIsAuthenticated(true) }
+    else { localStorage.removeItem('vp_token'); setIsAuthenticated(false) }
     setUsername(val)
     setUsernameSet(true)
     // Annonce immédiate si déjà connecté
@@ -284,7 +432,7 @@ export default function App() {
 
   // ── Premier lancement ────────────────────────────────────────────────────
   if (!usernameSet) {
-    return <UsernameScreen onConfirm={handleUsernameConfirm} />
+    return <AuthScreen onConfirm={handleUsernameConfirm} />
   }
 
   // ── Shell principal ──────────────────────────────────────────────────────
@@ -292,15 +440,15 @@ export default function App() {
     <div style={s.shell}>
 
       {/* ── Header ── */}
-      <header style={{ ...s.header, ...(isAdmin ? s.headerAdmin : {}) }}>
+      <header style={{ ...s.header, ...(isAdmin ? s.headerAdmin : {}) }} role="banner" className="vp-header">
 
         {/* Logo */}
-        <button style={s.logo} onClick={handleLogoClick} title="VoxelPlace">
+        <button style={s.logo} onClick={handleLogoClick} title="VoxelPlace" aria-label="VoxelPlace — 5 clics pour le mode admin">
           {isAdmin ? '👑' : '🎨'}&ensp;VoxelPlace
         </button>
 
         {/* Centre */}
-        <div style={s.headerCenter}>
+        <div style={s.headerCenter} className="vp-header-center">
           {isAdmin ? (
             <span style={s.adminBadge}>MODE ADMIN</span>
           ) : lastPixel ? (
@@ -325,10 +473,11 @@ export default function App() {
         {/* Droite */}
         <div style={s.headerRight}>
           {/* Indicateur connexion */}
-          <div style={s.connStatus}>
+          <div style={s.connStatus} aria-live="polite" aria-label={connected ? 'Connecté au serveur' : 'Déconnecté du serveur'}>
             <span
               style={{ ...s.dot, background: connected ? '#00cc66' : '#cc3300' }}
               className={connected ? 'dot-connected' : 'dot-disconnected'}
+              aria-hidden="true"
             />
             <span style={{ fontSize: 11, color: 'var(--text-2)' }}>
               {connected ? 'En ligne' : 'Hors ligne'}
@@ -338,12 +487,15 @@ export default function App() {
           {/* Username */}
           {editingUsername ? (
             <form onSubmit={handleUsernameEdit} style={{ display: 'flex', gap: 6 }}>
+              <label htmlFor="vp-edit-username" style={s.srOnly}>Nouveau pseudo</label>
               <input
+                id="vp-edit-username"
                 style={{ ...s.inputSm }}
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 maxLength={32}
                 autoFocus
+                aria-label="Modifier le pseudo"
               />
               <button style={s.btnSm} type="submit">OK</button>
               <button style={{ ...s.btnSm, background: 'var(--surface-2)' }} type="button"
@@ -352,10 +504,11 @@ export default function App() {
           ) : (
             <button
               style={s.userBtn}
-              onClick={() => { setEditValue(username); setEditingUsername(true) }}
-              title="Changer de pseudo"
+              onClick={() => { if (!isAuthenticated) { setEditValue(username); setEditingUsername(true) } }}
+              title={isAuthenticated ? 'Compte authentifié' : 'Changer de pseudo'}
+              aria-label={isAuthenticated ? `Connecté en tant que ${username}` : `Pseudo : ${username} — cliquer pour modifier`}
             >
-              👤&ensp;{username}
+              {isAuthenticated ? '🔒' : '👤'}&ensp;{username}
             </button>
           )}
         </div>
@@ -384,7 +537,7 @@ export default function App() {
       </main>
 
       {/* ── Toolbar ── */}
-      <footer style={s.toolbar}>
+      <footer style={s.toolbar} className="vp-toolbar">
         {/* Barre de cooldown (top edge du footer) */}
         {cooldown && (
           <div style={s.cooldownTrack}>
@@ -425,7 +578,7 @@ export default function App() {
           </>
         )}
 
-        <span style={s.hint}>
+        <span style={s.hint} className="vp-hint">
           {isAdmin
             ? '5 clics sur le logo pour quitter le mode admin'
             : 'Molette zoom · Glisser déplacer · Touches 1–8'}
@@ -436,17 +589,20 @@ export default function App() {
       {showAdminLogin && (
         <>
           <div style={s.backdrop} className="fade-in" onClick={() => setShowAdminLogin(false)} />
-          <form style={s.adminModal} className="fade-up" onSubmit={handleAdminLogin}>
-            <button type="button" style={s.closeBtn} onClick={() => setShowAdminLogin(false)}>✕</button>
-            <div style={{ fontSize: 32 }}>👑</div>
-            <h2 style={{ color: 'var(--admin)', fontSize: 18, fontWeight: 700 }}>Accès Admin</h2>
+          <form style={s.adminModal} className="fade-up vp-admin-modal" onSubmit={handleAdminLogin} aria-labelledby="admin-modal-title">
+            <button type="button" style={s.closeBtn} onClick={() => setShowAdminLogin(false)} aria-label="Fermer">✕</button>
+            <div style={{ fontSize: 32 }} aria-hidden="true">👑</div>
+            <h2 id="admin-modal-title" style={{ color: 'var(--admin)', fontSize: 18, fontWeight: 700 }}>Accès Admin</h2>
+            <label htmlFor="vp-admin-password" style={s.srOnly}>Mot de passe administrateur</label>
             <input
+              id="vp-admin-password"
               type="password"
               style={s.input}
               placeholder="Mot de passe…"
               value={adminPassword}
               onChange={e => setAdminPassword(e.target.value)}
               autoFocus
+              autoComplete="current-password"
             />
             {adminError && (
               <p style={{ color: 'var(--danger)', fontSize: 13 }}>{adminError}</p>
@@ -468,6 +624,9 @@ export default function App() {
           readOnly={pixelModalReadOnly}
         />
       )}
+
+      {/* ── Bandeau RGPD ── */}
+      <CookieBanner />
     </div>
   )
 }
@@ -644,6 +803,21 @@ const s = {
   platformDot: {
     width: 4, height: 4, borderRadius: '50%',
     background: 'var(--border-2)',
+  },
+
+  // Accessibilité — visuellement caché mais lisible par les lecteurs d'écran
+  srOnly: {
+    position: 'absolute', width: 1, height: 1,
+    padding: 0, margin: -1, overflow: 'hidden',
+    clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,
+  },
+
+  // RGPD cookie banner
+  cookieBanner: {
+    position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 16,
+    padding: '12px 20px',
+    background: 'var(--surface-2)', borderTop: '1px solid var(--border)',
   },
 
   // Inputs / buttons globaux

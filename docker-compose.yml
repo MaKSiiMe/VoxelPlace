@@ -1,4 +1,22 @@
 services:
+
+  voxelplace-db:
+    image: postgres:16-alpine
+    container_name: voxelplace-db
+    restart: always
+    environment:
+      POSTGRES_DB:       voxelplace
+      POSTGRES_USER:     voxelplace
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./voxelplace-api/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxelplace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   voxelplace-api:
     build: ./voxelplace-api
     container_name: voxelplace-api
@@ -6,10 +24,15 @@ services:
     ports:
       - "3001:3001"
     environment:
-      PORT: "3001"
-      REDIS_URL: "redis://192.168.68.51:6379"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
-      TEST_USERNAMES: "${TEST_USERNAMES:-}"
+      PORT:         "3001"
+      REDIS_URL:    "redis://192.168.68.51:6379"
+      DATABASE_URL: "postgresql://voxelplace:${POSTGRES_PASSWORD}@voxelplace-db:5432/voxelplace"
+      ADMIN_PASSWORD:  "${ADMIN_PASSWORD}"
+      JWT_SECRET:      "${JWT_SECRET}"
+      TEST_USERNAMES:  "${TEST_USERNAMES:-}"
+    depends_on:
+      voxelplace-db:
+        condition: service_healthy
 
   voxelplace-web:
     build: ./voxelplace-web
@@ -17,5 +40,9 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - voxelplace-api
+
+volumes:
+  postgres_data:
