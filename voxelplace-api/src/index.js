@@ -208,7 +208,7 @@ io.on('connection', async (socket) => {
     try {
       await setPixel(redis, pixel)
       io.emit('pixel:update', pixel)
-      ack?.({ ok: true })
+      ack?.({ ok: true, exempt: TEST_USERNAMES.has(pixel.username) })
     } catch (err) {
       console.error('[pixel:place]', err)
       ack?.({ error: 'Erreur serveur' })

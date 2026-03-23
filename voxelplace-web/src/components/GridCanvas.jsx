@@ -8,8 +8,10 @@ const DRAG_THRESHOLD = 4
 // Seuil à partir duquel les lignes de grille sont dessinées
 const GRID_LINE_ZOOM = 2.5
 
+const PLATFORM_ICONS = { web: '🌐', minecraft: '⛏', roblox: '🎮', hytale: '🏔' }
+
 const GridCanvas = forwardRef(function GridCanvas(
-  { grid, gridSize, colors, onPixelClick, adminMode, cooldown },
+  { grid, gridSize, colors, onPixelClick, onPixelHover, hoverData, adminMode, cooldown },
   ref
 ) {
   const wrapperRef  = useRef(null)
@@ -202,25 +204,41 @@ const GridCanvas = forwardRef(function GridCanvas(
     if (pixel?.x !== prev?.x || pixel?.y !== prev?.y) {
       hoveredRef.current = pixel
       drawOverlay()
+      onPixelHover?.(pixel ? pixel.x : null, pixel ? pixel.y : null)
     }
-    // Tooltip
     const tooltip = tooltipRef.current
     if (!tooltip) return
     if (pixel) {
       tooltip.style.display = 'block'
       tooltip.style.left = `${e.clientX + 14}px`
       tooltip.style.top  = `${e.clientY + 14}px`
-      tooltip.textContent = `${pixel.x}, ${pixel.y}`
     } else {
       tooltip.style.display = 'none'
     }
-  }, [gridSize, drawOverlay])
+  }, [gridSize, drawOverlay, onPixelHover])
 
   const handleMouseLeave = useCallback(() => {
     hoveredRef.current = null
     drawOverlay()
+    onPixelHover?.(null, null)
     if (tooltipRef.current) tooltipRef.current.style.display = 'none'
-  }, [drawOverlay])
+  }, [drawOverlay, onPixelHover])
+
+  // Met à jour le contenu du tooltip quand hoverData change
+  useEffect(() => {
+    const tooltip = tooltipRef.current
+    const h = hoveredRef.current
+    if (!tooltip || !h) return
+    const colorId = grid ? grid[h.y * gridSize + h.x] : 0
+    const hex = colors[colorId] ?? '#fff'
+    const swatch = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${hex};margin-right:4px;vertical-align:middle;border:1px solid rgba(255,255,255,0.2)"></span>`
+    let html = `${swatch}<strong>(${h.x}, ${h.y})</strong>`
+    if (hoverData?.username) {
+      const icon = PLATFORM_ICONS[hoverData.source] ?? ''
+      html += `<br><span style="color:#999">${hoverData.username} ${icon}</span>`
+    }
+    tooltip.innerHTML = html
+  }, [hoverData, grid, gridSize, colors])
 
   // ── Touch : pan (1 doigt) + pinch-to-zoom (2 doigts) + tap ──────────────
   useEffect(() => {

@@ -2,6 +2,7 @@ package fr.voxelplace.minecraft;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,6 +10,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.block.Action;
 
@@ -17,6 +19,21 @@ public class CanvasListener implements Listener {
     private final VoxelPlacePlugin plugin;
     private final CanvasManager    canvasManager;
     private final SocketManager    socketManager;
+
+    private static final String[] COLOR_NAMES = {
+        "Blanc", "Noir", "Rouge", "Vert", "Bleu", "Jaune", "Orange", "Violet"
+    };
+
+    private static final TextColor[] COLOR_CHAT = {
+        TextColor.color(0xFFFFFF), // blanc
+        TextColor.color(0x555555), // noir
+        TextColor.color(0xB02E26), // rouge
+        TextColor.color(0x5E7C16), // vert
+        TextColor.color(0x3C44AA), // bleu
+        TextColor.color(0xFED83D), // jaune
+        TextColor.color(0xF9801D), // orange
+        TextColor.color(0x8932B8), // violet
+    };
 
     public CanvasListener(VoxelPlacePlugin plugin, CanvasManager cm, SocketManager sm) {
         this.plugin        = plugin;
@@ -100,6 +117,39 @@ public class CanvasListener implements Listener {
             .append(prefix())
             .append(Component.text("Faites un clic droit avec un bloc coloré pour changer ce pixel.", NamedTextColor.YELLOW))
             .build());
+    }
+
+    // ── Action bar quand le joueur marche sur le canvas ──────────────────────
+
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event) {
+        // Ne fire que lors d'un changement de bloc (pas chaque tick)
+        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
+            && event.getFrom().getBlockZ() == event.getTo().getBlockZ()
+            && event.getFrom().getBlockY() == event.getTo().getBlockY()) return;
+
+        if (!canvasManager.isConfigured()) return;
+
+        var loc   = event.getTo();
+        var world = loc.getWorld();
+        if (world == null) return;
+
+        // Bloc sous les pieds du joueur
+        var below  = world.getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ());
+        int[] coords = canvasManager.getCanvasCoords(below);
+        if (coords == null) return;
+
+        int px      = coords[0];
+        int py      = coords[1];
+        int colorId = canvasManager.getColorAt(px, py) & 0x07;
+
+        var bar = Component.text()
+            .append(Component.text("(" + px + ", " + py + ")", NamedTextColor.WHITE))
+            .append(Component.text("  ■  ", COLOR_CHAT[colorId]))
+            .append(Component.text(COLOR_NAMES[colorId], COLOR_CHAT[colorId]))
+            .build();
+
+        event.getPlayer().sendActionBar(bar);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

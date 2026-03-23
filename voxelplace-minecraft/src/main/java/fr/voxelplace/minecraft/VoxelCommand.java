@@ -31,6 +31,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
             case "fill"   -> cmdFill(sender);
             case "reload" -> cmdReload(sender);
             case "info"   -> cmdInfo(sender);
+            case "help"   -> sendHelp(sender);
             default       -> sendHelp(sender);
         }
         return true;
@@ -123,11 +124,18 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage(Component.text("── VoxelPlace ──────────────────", NamedTextColor.GOLD));
-        sender.sendMessage(help("/vp setup",  "Définit le coin du canvas à ta position"));
-        sender.sendMessage(help("/vp fill",   "Redessine le canvas depuis le serveur"));
-        sender.sendMessage(help("/vp reload", "Reconnecte au serveur VoxelPlace"));
-        sender.sendMessage(help("/vp info",   "État de la connexion et du canvas"));
+        sender.sendMessage(Component.text("─── VoxelPlace ──────────────────────", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  Commandes joueur", NamedTextColor.YELLOW));
+        sender.sendMessage(help("/vp help", "Affiche cette aide"));
+        sender.sendMessage(help("/vp info", "État de la connexion et du canvas"));
+
+        if (sender.isOp()) {
+            sender.sendMessage(Component.text("  Commandes admin (OP)", NamedTextColor.RED));
+            sender.sendMessage(help("/vp setup",  "Définit le coin du canvas à ta position"));
+            sender.sendMessage(help("/vp fill",   "Redessine le canvas depuis le serveur"));
+            sender.sendMessage(help("/vp reload", "Reconnecte au serveur VoxelPlace"));
+        }
+        sender.sendMessage(Component.text("─────────────────────────────────────", NamedTextColor.GOLD));
     }
 
     private Component help(String cmd, String desc) {
@@ -144,7 +152,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("setup", "fill", "reload", "info").stream()
+            return List.of("help", "info", "setup", "fill", "reload").stream()
                 .filter(s -> s.startsWith(args[0].toLowerCase()))
                 .toList();
         }

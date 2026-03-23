@@ -33,9 +33,10 @@
 8. [Sécurité](#-sécurité)
 9. [Mode Admin](#-mode-admin)
 10. [Plugin Minecraft](#-plugin-minecraft)
-11. [Installation & Lancement](#-installation--lancement)
-12. [Structure du projet](#-structure-du-projet)
-13. [Roadmap](#-roadmap)
+11. [Déploiement & CI/CD](#-déploiement--cicd)
+12. [Installation & Lancement](#-installation--lancement)
+13. [Structure du projet](#-structure-du-projet)
+14. [Roadmap](#-roadmap)
 
 ---
 
@@ -408,7 +409,7 @@ Le plugin connecte un serveur **Paper 1.21.1** au backend VoxelPlace via Socket.
 ### Configuration (`plugins/VoxelPlace/config.yml`)
 
 ```yaml
-server-url: "http://192.168.68.53:3001"
+server-url: "http://<IP_SERVEUR>:3001"
 canvas:
   world: "world"
   x: 0        # coin Nord-Ouest — défini par /vp setup
@@ -429,6 +430,46 @@ mvn clean package -q
 # Copier dans le dossier plugins du serveur Paper
 cp target/VoxelPlace.jar /chemin/vers/plugins/
 ```
+
+---
+
+## 🐳 Déploiement & CI/CD
+
+### Infrastructure
+
+Le backend tourne en production sur un serveur Linux via Docker, accessible à distance via **Tailscale** (VPN mesh).
+
+| Service | Technologie | Accès |
+|---------|-------------|-------|
+| API VoxelPlace | Docker (image Node.js 20 Alpine) | `http://<TAILSCALE_IP>:3001` |
+| Redis | Docker (existant) | `redis://<IP_SERVEUR>:6379` |
+| Minecraft | Docker (`itzg/minecraft-server` Paper 1.21.1) | `<TAILSCALE_IP>:25565` |
+| Portainer | Docker | `https://<TAILSCALE_IP>:9443` |
+
+### Déployer l'API avec Docker
+
+```bash
+# Depuis la racine du projet
+docker compose up --build -d
+```
+
+L'API se connecte automatiquement à Redis via `REDIS_URL` défini dans `voxelplace-api/.env`.
+
+### CI/CD — GitHub Actions
+
+Chaque push sur `main` déclenche automatiquement un redéploiement :
+
+```
+git push → GitHub Actions → Tailscale VPN → SSH → git pull + docker compose up
+```
+
+Le workflow `.github/workflows/deploy.yml` nécessite trois secrets GitHub :
+
+| Secret | Description |
+|--------|-------------|
+| `TAILSCALE_AUTHKEY` | Clé d'accès au réseau Tailscale |
+| `SSH_PRIVATE_KEY` | Clé privée SSH pour accéder au serveur |
+| `SSH_USER` | Utilisateur SSH du serveur |
 
 ---
 
@@ -516,6 +557,9 @@ cd voxelplace-api && npm start
 
 ```
 VoxelPlace/
+├── .github/workflows/
+│   └── deploy.yml                   # CI/CD — déploiement automatique sur push main
+├── docker-compose.yml               # Orchestration Docker pour l'API
 ├── voxelplace-api/                  # Backend Fastify + Socket.io
 │   ├── src/
 │   │   ├── index.js                 # Serveur, routes REST, événements Socket.io
@@ -569,6 +613,10 @@ gantt
     section Phase 4 — Admin & Modération
     Dashboard admin                  :done, 2025-03-01, 2025-03-15
     Inspection & suppression pixels  :done, 2025-03-01, 2025-03-15
+    section Phase 4b — DevOps
+    Dockerisation API                :done, 2025-03-15, 2025-03-20
+    CI/CD GitHub Actions             :done, 2025-03-15, 2025-03-20
+    Accès distant Tailscale          :done, 2025-03-15, 2025-03-20
     section Phase 5 — Cross-Game
     Client Roblox (Lua)              :2025-04-01, 2025-05-01
     Client Hytale (Mod API)          :2025-04-01, 2025-05-01

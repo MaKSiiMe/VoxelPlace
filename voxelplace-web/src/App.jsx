@@ -119,8 +119,9 @@ export default function App() {
   // Players
   const [players, setPlayers]         = useState({ count: 0, byPlatform: {} })
 
-  // Inspect mode (non-admin pixel info)
-  const [inspectMode, setInspectMode] = useState(false)
+  // Hover info
+  const [hoverData, setHoverData]     = useState(null)
+  const hoverTimerRef                 = useRef(null)
 
   // Admin
   const [isAdmin, setIsAdmin]         = useState(false)
@@ -199,6 +200,17 @@ export default function App() {
     setPixelModalReadOnly(readOnly)
   }, [])
 
+  const handlePixelHover = useCallback((x, y) => {
+    clearTimeout(hoverTimerRef.current)
+    if (x === null) { setHoverData(null); return }
+    hoverTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/api/pixel/${x}/${y}`)
+        setHoverData(await res.json())
+      } catch { setHoverData(null) }
+    }, 300)
+  }, [])
+
   const handlePixelClick = useCallback(async (x, y) => {
     if (!connected) return
 
@@ -207,26 +219,19 @@ export default function App() {
       return
     }
 
-    if (inspectMode) {
-      openPixelModal(x, y, true)
-      return
-    }
-
     if (!usernameSet || cooldown) return
 
-    socket.emit('pixel:place', { x, y, colorId: selectedColor, username, source: 'web' }, (ack) => {
-      if (ack?.error) {
-        setCooldown(true)
-        clearTimeout(cooldownTimer.current)
-        cooldownTimer.current = setTimeout(() => setCooldown(false), 1000)
-      }
-    })
-
-    // Cooldown optimiste immédiat
     setCooldown(true)
     clearTimeout(cooldownTimer.current)
     cooldownTimer.current = setTimeout(() => setCooldown(false), 1000)
-  }, [connected, isAdmin, inspectMode, usernameSet, cooldown, selectedColor, username, openPixelModal])
+
+    socket.emit('pixel:place', { x, y, colorId: selectedColor, username, source: 'web' }, (ack) => {
+      if (ack?.exempt) {
+        clearTimeout(cooldownTimer.current)
+        setCooldown(false)
+      }
+    })
+  }, [connected, isAdmin, usernameSet, cooldown, selectedColor, username, openPixelModal])
 
   // ── Admin ────────────────────────────────────────────────────────────────
   const handleAdminClear = useCallback(() => {
@@ -365,6 +370,8 @@ export default function App() {
             gridSize={gridSize}
             colors={colors}
             onPixelClick={handlePixelClick}
+            onPixelHover={handlePixelHover}
+            hoverData={hoverData}
             adminMode={isAdmin}
             cooldown={cooldown}
           />
@@ -415,17 +422,6 @@ export default function App() {
             <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: 'monospace' }}>
               {colors[selectedColor]}
             </span>
-            <div style={s.separator} />
-            <button
-              style={{
-                ...s.inspectBtn,
-                ...(inspectMode ? s.inspectBtnActive : {}),
-              }}
-              onClick={() => setInspectMode(v => !v)}
-              title="Mode inspection : cliquez sur un pixel pour voir ses infos"
-            >
-              🔍
-            </button>
           </>
         )}
 
