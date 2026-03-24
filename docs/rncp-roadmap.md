@@ -10,17 +10,17 @@
 
 | # | Catégorie | Fait | Partiel | À faire | Total | Avancement |
 |---|-----------|------|---------|---------|-------|-----------|
-| 1 | Base de données | 2 | 1 | 2 | 5 | 🟨 40% |
+| 1 | Base de données | 5 | 0 | 0 | 5 | 🟩 100% |
 | 2 | Sécurité | 6 | 1 | 1 | 8 | 🟩 75% |
 | 3 | DevOps & Tests | 3 | 0 | 2 | 5 | 🟩 60% |
 | 4 | Accessibilité | 4 | 0 | 1 | 5 | 🟩 80% |
 | 5 | Tests Frontend | 0 | 0 | 5 | 5 | 🟥 0% |
-| 6 | RGPD | 2 | 1 | 1 | 4 | 🟨 50% |
+| 6 | RGPD | 4 | 0 | 0 | 4 | 🟩 100% |
 | 7 | Conception UML | 4 | 1 | 0 | 5 | 🟩 80% |
 | 8 | SEO | 4 | 0 | 1 | 5 | 🟩 80% |
-| 9 | Maquettage & Responsive | 0 | 1 | 3 | 4 | 🟥 10% |
+| 9 | Maquettage & Responsive | 1 | 1 | 2 | 4 | 🟨 30% |
 | 10 | Rendus obligatoires | 0 | 0 | 5 | 5 | 🟥 0% |
-| — | **TOTAL** | **23** | **5** | **23** | **51** | **~45%** |
+| — | **TOTAL** | **32** | **4** | **15** | **51** | **~63%** |
 
 ---
 
@@ -37,11 +37,11 @@
 
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
-| 1.1 | Méthode Merise : MCD → MLD → MPD | 🔄 | MLD + ERD Mermaid dans `docs/uml/erd-merise.md` — MCD avec losanges à refaire avec Mocodo/Draw.io |
+| 1.1 | Méthode Merise : MCD → MLD → MPD | ✅ | MLD + ERD Mermaid dans `docs/uml/erd-merise.md` |
 | 1.2 | ERD avant le code | ✅ | `docs/uml/erd-merise.md` |
-| 1.3 | BDD SQL (MySQL/PostgreSQL) | ❌ | Redis uniquement — PostgreSQL pour comptes utilisateurs prévu |
-| 1.4 | Requêtes préparées anti-injection | 🚫 | Redis (pas SQL) — justification Redis documentée dans erd-merise.md |
-| 1.5 | BDD hébergée ou démarche documentée | ✅ | Redis sur serveur Debian |
+| 1.3 | BDD SQL (MySQL/PostgreSQL) | ✅ | PostgreSQL 16 — tables `users` + `pixel_history` — container `voxelplace-db` |
+| 1.4 | Requêtes préparées anti-injection SQL | ✅ | `$1, $2` dans `auth.js` et `index.js` — INSERT, SELECT, DISTINCT ON paramétrés |
+| 1.5 | BDD hébergée ou démarche documentée | ✅ | Redis + PostgreSQL sur serveur Debian, persistés via volumes Docker |
 
 ---
 
@@ -49,14 +49,14 @@
 
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
-| 2.1 | Hachage des mots de passe (bcrypt) | ✅ | `voxelplace-api/src/auth.js` — bcryptjs + JWT, endpoints `/api/auth/register` et `/api/auth/login` |
-| 2.2 | Protection CSRF (tokens) | ❌ | Auth JWT en place — CSRF non critique pour une API stateless |
-| 2.3 | Protection XSS | ✅ | `sanitizeUsername()` dans `voxelplace-api/src/utils.js` |
-| 2.4 | HTTPS en production | ✅ | Certificat auto-signé nginx — `voxelplace-web/Dockerfile` + `nginx.conf` (port 443, redirect 80→443) |
-| 2.5 | Secrets hors dépôt Git | ✅ | `.env` dans `.gitignore` |
-| 2.6 | Principe de moindre privilège | ✅ | Mode admin protégé par mot de passe |
-| 2.7 | Rate limiting | ✅ | Cooldown 5 min par pixel |
-| 2.8 | Architecture MVC documentée | 🔄 | Séparation utils/service implicite — à expliciter dans le rapport |
+| 2.1 | Hachage des mots de passe (bcrypt) | ✅ | `bcryptjs` 10 rounds — `hashPassword()` / `verifyPassword()` dans `auth.js` |
+| 2.2 | Protection CSRF (tokens) | ❌ | API stateless JWT — CSRF non critique, à justifier dans le rapport |
+| 2.3 | Protection XSS | ✅ | `sanitizeUsername()` dans `utils.js` — suppression `< > " '` et caractères de contrôle |
+| 2.4 | HTTPS en production | ✅ | Certificat auto-signé nginx — port 443, redirect 80→443 — `voxelplace-web/Dockerfile` |
+| 2.5 | Secrets hors dépôt Git | ✅ | `.env` dans `.gitignore` — `JWT_SECRET`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD` |
+| 2.6 | Principe de moindre privilège | ✅ | Mode admin protégé par mot de passe séparé |
+| 2.7 | Rate limiting | ✅ | Cooldown 1s par pixel, par username — vérifié côté serveur |
+| 2.8 | Architecture MVC documentée | 🔄 | Séparation utils / grid / auth / index — à expliciter dans le rapport |
 
 ---
 
@@ -64,11 +64,11 @@
 
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
-| 3.1 | Docker (conteneurisation) | ✅ | API + Frontend + Minecraft dans `docker-compose.yml` |
+| 3.1 | Docker (conteneurisation) | ✅ | API + Frontend + PostgreSQL + Minecraft dans `docker-compose.yml` |
 | 3.2 | GitFlow (branches feature/develop/main) | ❌ | Tout sur `main` — à adopter dès maintenant |
-| 3.3 | CI/CD | ✅ | GitHub Actions dans `.github/workflows/deploy.yml` |
-| 3.4 | Tests unitaires | ✅ | 24/24 tests — `voxelplace-api/tests/` avec `node:test` |
-| 3.5 | Captures d'écran tests pour rapport | ❌ | À faire avec `npm test` et screenshot terminal |
+| 3.3 | CI/CD | ✅ | GitHub Actions dans `.github/workflows/deploy.yml` — SSH via Tailscale |
+| 3.4 | Tests unitaires | ✅ | 34/34 tests — `node:test` — validation, grid, auth (bcrypt + JWT) |
+| 3.5 | Captures d'écran tests pour rapport | ❌ | À faire : `npm test` puis screenshot terminal |
 
 ---
 
@@ -77,9 +77,9 @@
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
 | 4.1 | `alt` sur toutes les images | ✅ | Pas d'images — icônes emoji/texte |
-| 4.2 | `<label>` sur tous les champs | ✅ | `voxelplace-web/src/App.jsx` — sr-only labels |
-| 4.3 | Attributs ARIA (`aria-label`, `aria-live`) | ✅ | `aria-live`, `aria-label`, `aria-hidden`, `role="banner"` |
-| 4.4 | Navigation clavier (`:focus-visible`) | ✅ | `voxelplace-web/src/index.css` |
+| 4.2 | `<label>` sur tous les champs | ✅ | `App.jsx` — sr-only labels sur tous les inputs (pseudo, password, confirm, admin) |
+| 4.3 | Attributs ARIA (`aria-label`, `aria-live`) | ✅ | `aria-live`, `aria-label`, `aria-hidden`, `role="banner"`, `role="tab"`, `role="alert"` |
+| 4.4 | Navigation clavier (`:focus-visible`) | ✅ | `index.css` |
 | 4.5 | Contraste couleurs ≥ 4.5:1 (WCAG AA) | ❌ | À vérifier avec DevTools (onglet Accessibilité) |
 
 ---
@@ -101,9 +101,9 @@
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
 | 6.1 | Bandeau cookies / consentement | ✅ | `CookieBanner` dans `App.jsx` — localStorage consent |
-| 6.2 | Lien vers politique de confidentialité | 🔄 | Lien CNIL présent — page dédiée manquante |
-| 6.3 | Politique de confidentialité | ❌ | Page ou section à créer |
-| 6.4 | Pas de données personnelles sensibles stockées | ✅ | Pseudo libre, pas de mot de passe (pour l'instant) |
+| 6.2 | Lien vers politique de confidentialité | ✅ | Bouton dans le bandeau RGPD ouvre la modale |
+| 6.3 | Politique de confidentialité | ✅ | `PrivacyModal.jsx` — données collectées, finalité, durée, droits RGPD, lien CNIL |
+| 6.4 | Données personnelles protégées | ✅ | Mots de passe hachés bcrypt, jamais stockés en clair |
 
 ---
 
@@ -115,7 +115,7 @@
 | 7.2 | Diagramme de cas d'utilisation | ✅ | `docs/uml/use-case.md` |
 | 7.3 | Diagramme de séquence | ✅ | `docs/uml/sequence-diagram.md` |
 | 7.4 | Diagramme de déploiement | ✅ | `docs/uml/deployment-diagram.md` |
-| 7.5 | ERD / MLD (Merise) | 🔄 | Textuel + Mermaid dans `docs/uml/erd-merise.md` — MCD visuel à refaire |
+| 7.5 | ERD / MLD (Merise) | 🔄 | Textuel + Mermaid dans `docs/uml/erd-merise.md` — MCD visuel à refaire avec Mocodo/Draw.io |
 
 ---
 
@@ -125,7 +125,7 @@
 |---|---------|--------|-------|
 | 8.1 | `<title>` pertinent | ✅ | "VoxelPlace — Canvas collaboratif en temps réel" |
 | 8.2 | `<meta description>` | ✅ | Description avec Minecraft / Hytale / Roblox |
-| 8.3 | `<h1>` unique par page | ❌ | À vérifier — peut manquer dans `App.jsx` |
+| 8.3 | `<h1>` unique par page | ❌ | À vérifier — présent dans AuthScreen (`welcome-title`) mais pas dans le shell principal |
 | 8.4 | Open Graph tags | ✅ | `og:title`, `og:description`, `og:type` |
 | 8.5 | `<meta robots>` | ✅ | `index, follow` |
 
@@ -135,9 +135,9 @@
 
 | # | Critère | Statut | Notes |
 |---|---------|--------|-------|
-| 9.1 | Wireframes réalisés avant le dev | ❌ | À créer rétrospectivement pour le rapport (Figma / draw.io) |
-| 9.2 | Design responsive (media queries) | 🔄 | CSS media `max-width: 600px` pour UI — canvas non responsive |
-| 9.3 | Canvas responsive / touch | ❌ | Pas de support pinch-to-zoom / touch events |
+| 9.1 | Wireframes réalisés avant le dev | ❌ | À créer rétrospectivement pour le rapport (Figma / Draw.io) |
+| 9.2 | Design responsive (media queries) | 🔄 | CSS `max-width: 600px` pour UI — canvas non responsive |
+| 9.3 | Canvas responsive / touch | ✅ | Touch events : pan 1 doigt, pinch-to-zoom 2 doigts, tap = clic |
 | 9.4 | Flexbox / Grid documentés | ❌ | À mentionner dans le rapport |
 
 ---
@@ -158,23 +158,73 @@
 
 ### Critique — bloquant pour le jury
 
-1. ❌ **Authentification bcrypt** — comptes utilisateurs (attendu par tous les jurés CDA)
-2. ❌ **HTTPS** — Let's Encrypt / Caddy (1-2h)
-3. ❌ **GitFlow** — adopter maintenant : branches `feature/`, `develop`
-4. ❌ **Rapport écrit** — commencer tôt (le plus long)
-5. ❌ **Dossier Professionnel** — template RNCP à remplir
+1. ❌ **GitFlow** — adopter dès maintenant : branches `feature/`, `develop`
+2. ❌ **Rapport écrit** — commencer tôt (le plus long)
+3. ❌ **Dossier Professionnel** — template RNCP à remplir
 
 ### Important — questions fréquentes jury
 
-6. 🔄 **MCD Merise avec losanges** — Mocodo (en ligne) ou Draw.io
-7. ❌ **Lighthouse ≥ 90** — captures pour le rapport
-8. ❌ **Page politique de confidentialité** — RGPD
-9. ❌ **Wireframes** — rétrospectivement pour le rapport
-10. ❌ **`<h1>` unique** — vérifier App.jsx
+4. 🔄 **MCD Merise avec losanges** — Mocodo (en ligne) ou Draw.io
+5. ❌ **Lighthouse ≥ 90** — captures pour le rapport
+6. ❌ **Page politique de confidentialité** — RGPD
+7. ❌ **Wireframes** — rétrospectivement pour le rapport
+8. ❌ **Captures DevTools + tests** — pour le rapport
 
 ### Secondaire — bonus
 
-11. ❌ **PostgreSQL** pour comptes utilisateurs (montrerait la maîtrise SQL+NoSQL)
-12. ❌ **CSRF tokens** (si auth implémentée)
-13. ❌ **Touch events** sur canvas mobile
-14. ❌ **Captures DevTools** (Network, Console) pour le rapport
+9. ❌ **Touch events** sur canvas mobile
+10. ❌ **CSRF tokens** — justifiable comme non-critique (API stateless JWT)
+
+---
+
+## Future Features
+
+> Évolutions prévues pour VoxelPlace, classées par complexité. Ne pas bloquer le RNCP là-dessus.
+
+| Fonctionnalité | Difficulté | Statut | Composants impactés |
+|:---|:---:|:---:|:---|
+| **Leaderboard Cross-platform** | ⭐ | ✅ | `Leaderboard.jsx`, Redis `HINCRBY` |
+| **Heatmap d'activité** | ⭐⭐ | ✅ | `GridCanvas.jsx` (3e canvas), `GET /api/heatmap` |
+| **Timelapse interactif** | ⭐⭐ | ✅ | `Timelapse.jsx`, `pixel_history`, `GET /api/history` |
+| **Git log pixel** | ⭐⭐ | ✅ | `PixelHistory.jsx`, clic droit canvas, `GET /api/pixel/:x/:y/history` |
+| **Canvas Pulse** | ⭐⭐ | ✅ | `Pulse.jsx`, `GET /api/pulse` (pixels/minute 3h) |
+| **Time Capsule** | ⭐⭐⭐ | ✅ | `TimeCapsule.jsx`, `GET /api/snapshot?at=` |
+| **Zones contestées** | ⭐⭐⭐ | ✅ | overlay `GridCanvas`, `GET /api/conflicts` (SQL window function) |
+| **Redesign UI** | ⭐⭐ | 🔄 | shadcn/ui + Tailwind CSS — branche `feature/ui-redesign` |
+| **Client Roblox (Lua)** | ⭐⭐ | ❌ | Backend (Socket.io), Roblox Studio |
+| **Client Hytale (Mod API)** | ⭐⭐ | ❌ | Backend (Socket.io), Mod API |
+| **Vue 3D (Three.js / Voxel)** | ⭐⭐⭐⭐ | ❌ | Frontend (WebGL), `React-Three-Fiber` |
+
+---
+
+### ✅ Données implémentées (pixel_history)
+
+La table `pixel_history` (PostgreSQL append-only) alimente toutes les features analytics :
+
+- **Heatmap** — `COUNT(*) GROUP BY x, y` → overlay semi-transparent bleu→rouge
+- **Timelapse** — replay chronologique événement par événement à vitesse variable (×1 à MAX)
+- **Git log pixel** — clic droit → liste des 50 dernières modifications d'une case avec auteur, couleur, date
+- **Canvas Pulse** — `date_trunc('minute')` → sparkline pixels/minute sur 3h, refresh 30s
+- **Time Capsule** — `DISTINCT ON (x, y) WHERE placed_at <= $1` → état exact du canvas à n'importe quel timestamp
+- **Zones contestées** — `LAG(username) OVER (PARTITION BY x, y)` → overlay des pixels écrasés par un autre utilisateur
+
+---
+
+### 🔄 En cours — Redesign UI
+
+Refonte visuelle sur la branche `feature/ui-redesign` avec **shadcn/ui + Tailwind CSS**.
+
+---
+
+### ❌ À venir — Clients cross-game
+
+- **Roblox (Lua)** — WebSocket vers le backend, mapping `BrickColor` → `colorId`
+- **Hytale** — intégration via Mod API, mapping blocs → `colorId`
+
+---
+
+### ❌ Vue 3D (Three.js)
+
+Vue alternative WebGL transformant la grille 2D en monde de cubes interactifs.
+
+- **Technologie :** `React-Three-Fiber` + `InstancedMesh` pour optimiser le rendu des 4 096 cubes

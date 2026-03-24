@@ -10,12 +10,29 @@ const GRID_LINE_ZOOM = 2.5
 
 const PLATFORM_ICONS = { web: '🌐', minecraft: '⛏', roblox: '🎮', hytale: '🏔' }
 
+// Convertit une intensité 0→1 en couleur de heatmap (bleu → jaune → rouge)
+function heatColor(t) {
+  let r, g, b
+  if (t < 0.5) {
+    r = Math.round(t * 2 * 255)
+    g = Math.round(150 + t * 100)
+    b = Math.round(255 * (1 - t * 2))
+  } else {
+    const tt = (t - 0.5) * 2
+    r = 255
+    g = Math.round(200 - tt * 160)
+    b = 0
+  }
+  return `rgba(${r},${g},${b},${0.12 + t * 0.58})`
+}
+
 const GridCanvas = forwardRef(function GridCanvas(
-  { grid, gridSize, colors, onPixelClick, onPixelHover, hoverData, adminMode, cooldown },
+  { grid, gridSize, colors, onPixelClick, onPixelRightClick, onPixelHover, hoverData, adminMode, cooldown, heatmapData },
   ref
 ) {
   const wrapperRef  = useRef(null)
   const canvasRef   = useRef(null)  // canvas principal (pixels)
+  const heatRef     = useRef(null)  // canvas heatmap
   const overlayRef  = useRef(null)  // canvas overlay (grille + hover)
   const tooltipRef  = useRef(null)
 
@@ -90,18 +107,41 @@ const GridCanvas = forwardRef(function GridCanvas(
   // Redessine l'overlay à chaque rerender (zoom/pan/hover)
   useEffect(() => { drawOverlay() }, [drawOverlay, /* zoom/pan via forceRender */])
 
-  // ── drawPixel exposé au parent ───────────────────────────────────────────
+  // ── Heatmap ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = heatRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (!heatmapData || heatmapData.length === 0) return
+
+    const max = Math.max(...heatmapData.map(p => p.count))
+    if (max === 0) return
+    for (const { x, y, count } of heatmapData) {
+      ctx.fillStyle = heatColor(count / max)
+      ctx.fillRect(x * BASE_PX, y * BASE_PX, BASE_PX, BASE_PX)
+    }
+  }, [heatmapData])
+
+  // ── drawPixel + resetGrid exposés au parent ───────────────────────────────
   const drawPixel = useCallback((x, y, colorId) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = colors[colorId] ?? '#FFFFFF'
     ctx.fillRect(x * BASE_PX, y * BASE_PX, BASE_PX, BASE_PX)
-    // Re-dessine l'overlay pour restaurer les lignes de grille au-dessus
     drawOverlay()
   }, [colors, drawOverlay])
 
-  useImperativeHandle(ref, () => ({ drawPixel }), [drawPixel])
+  const resetGrid = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }, [])
+
+  useImperativeHandle(ref, () => ({ drawPixel, resetGrid }), [drawPixel, resetGrid])
 
   // ── Centrage initial ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -216,6 +256,12 @@ const GridCanvas = forwardRef(function GridCanvas(
       tooltip.style.display = 'none'
     }
   }, [gridSize, drawOverlay, onPixelHover])
+
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault()
+    const pixel = screenToPixel(e.clientX, e.clientY)
+    if (pixel) onPixelRightClick?.(pixel.x, pixel.y)
+  }, [gridSize]) // eslint-disable-line
 
   const handleMouseLeave = useCallback(() => {
     hoveredRef.current = null
@@ -396,6 +442,7 @@ const GridCanvas = forwardRef(function GridCanvas(
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
         style={{
           position: 'relative', width: '100%', height: '100%',
           overflow: 'hidden', background: 'var(--canvas-bg)',
@@ -408,6 +455,14 @@ const GridCanvas = forwardRef(function GridCanvas(
           width={canvasSize}
           height={canvasSize}
           style={canvasStyle(panX, panY, zoom)}
+        />
+
+        {/* Canvas heatmap (entre pixels et overlay) */}
+        <canvas
+          ref={heatRef}
+          width={canvasSize}
+          height={canvasSize}
+          style={{ ...canvasStyle(panX, panY, zoom), pointerEvents: 'none' }}
         />
 
         {/* Canvas overlay (grille + hover) */}

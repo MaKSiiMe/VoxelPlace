@@ -62,11 +62,111 @@ function broadcastPlayers() {
   io.emit('players:update', getPlayersPayload())
 }
 
+// --- Stats pixels par plateforme ---
+
+const STATS_KEY = 'voxelplace:stats:pixels'
+
+async function getStats() {
+  const raw = await redis.hgetall(STATS_KEY)
+  if (!raw) return { total: 0, byPlatform: {} }
+  const { total = '0', ...rest } = raw
+  const byPlatform = Object.fromEntries(
+    Object.entries(rest).map(([k, v]) => [k, parseInt(v)])
+  )
+  return { total: parseInt(total), byPlatform }
+}
+
 // --- Routes REST ---
 
 fastify.get('/api/grid', async (_req, reply) => {
   const buf = await loadGrid(redis)
   reply.send({ grid: Array.from(buf), size: GRID_SIZE, colors: COLORS })
+})
+
+fastify.get('/api/stats', async (_req, reply) => {
+  reply.send(await getStats())
+})
+
+// Heatmap : nombre de pixels posés par coordonnée
+fastify.get('/api/heatmap', async (_req, reply) => {
+  const result = await pool.query(
+    'SELECT x, y, COUNT(*)::int AS count FROM pixel_history GROUP BY x, y'
+  )
+  reply.send({ heatmap: result.rows })
+})
+
+// Pulse : pixels par minute sur les 3 dernières heures
+fastify.get('/api/pulse', async (_req, reply) => {
+  const result = await pool.query(`
+    SELECT date_trunc('minute', placed_at) AS t, COUNT(*)::int AS count
+    FROM pixel_history
+    WHERE placed_at > NOW() - INTERVAL '3 hours'
+    GROUP BY t ORDER BY t
+  `)
+  reply.send({ pulse: result.rows })
+})
+
+// Snapshot : état exact du canvas à un timestamp donné
+fastify.get('/api/snapshot', async (req, reply) => {
+  const { at } = req.query
+  if (!at) return reply.status(400).send({ error: 'Paramètre "at" requis' })
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT ON (x, y) x, y, color_id AS "colorId"
+      FROM pixel_history
+      WHERE placed_at <= $1
+      ORDER BY x, y, placed_at DESC
+    `, [at])
+    const grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
+    for (const { x, y, colorId } of result.rows) {
+      grid[y * GRID_SIZE + x] = colorId
+    }
+    reply.send({ grid, size: GRID_SIZE, at })
+  } catch {
+    reply.status(400).send({ error: 'Timestamp invalide' })
+  }
+})
+
+// Zones de conflit : pixels écrasés par un utilisateur différent
+fastify.get('/api/conflicts', async (_req, reply) => {
+  const result = await pool.query(`
+    SELECT x, y, COUNT(*)::int AS count
+    FROM (
+      SELECT x, y, username,
+             LAG(username) OVER (PARTITION BY x, y ORDER BY placed_at) AS prev_username
+      FROM pixel_history
+    ) t
+    WHERE prev_username IS NOT NULL AND username != prev_username
+    GROUP BY x, y
+  `)
+  reply.send({ conflicts: result.rows })
+})
+
+// Historique complet pour le timelapse
+fastify.get('/api/history', async (req, reply) => {
+  const limit = Math.min(parseInt(req.query.limit ?? '10000'), 50000)
+  const result = await pool.query(
+    `SELECT x, y, color_id AS "colorId", username, source,
+            placed_at AS "placedAt"
+     FROM pixel_history ORDER BY placed_at ASC LIMIT $1`,
+    [limit]
+  )
+  reply.send({ history: result.rows, total: result.rowCount })
+})
+
+// Historique d'un seul pixel (git blame)
+fastify.get('/api/pixel/:x/:y/history', async (req, reply) => {
+  const x = parseInt(req.params.x, 10)
+  const y = parseInt(req.params.y, 10)
+  if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+    return reply.status(400).send({ error: 'Coordonnées invalides' })
+  }
+  const result = await pool.query(
+    `SELECT color_id AS "colorId", username, source, placed_at AS "placedAt"
+     FROM pixel_history WHERE x = $1 AND y = $2 ORDER BY placed_at DESC LIMIT 50`,
+    [x, y]
+  )
+  reply.send({ x, y, history: result.rows })
 })
 
 fastify.get('/api/pixel/:x/:y', async (req, reply) => {
@@ -109,13 +209,14 @@ setInterval(() => {
 io.on('connection', async (socket) => {
   console.log(`[Socket] Connecté : ${socket.id}`)
 
-  // Grille initiale + état des joueurs
+  // Grille initiale + état des joueurs + stats
   const buf = await loadGrid(redis)
   socket.emit('grid:init', {
     grid:    Array.from(buf),
     size:    GRID_SIZE,
     colors:  COLORS,
     players: getPlayersPayload(),
+    stats:   await getStats(),
   })
 
   // Le client annonce son pseudo et sa plateforme
@@ -189,7 +290,15 @@ io.on('connection', async (socket) => {
 
     try {
       await setPixel(redis, pixel)
+      await redis.hincrby(STATS_KEY, pixel.source, 1)
+      await redis.hincrby(STATS_KEY, 'total', 1)
+      // Historique PostgreSQL — fire-and-forget pour ne pas bloquer le pixel:place
+      pool.query(
+        'INSERT INTO pixel_history (x, y, color_id, username, source) VALUES ($1, $2, $3, $4, $5)',
+        [pixel.x, pixel.y, pixel.colorId, pixel.username, pixel.source]
+      ).catch(err => console.error('[pixel_history]', err.message))
       io.emit('pixel:update', pixel)
+      io.emit('stats:update', await getStats())
       ack?.({ ok: true, exempt: TEST_USERNAMES.has(pixel.username) })
     } catch (err) {
       console.error('[pixel:place]', err)

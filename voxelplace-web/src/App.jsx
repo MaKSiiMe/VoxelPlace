@@ -3,6 +3,12 @@ import { socket } from './socket.js'
 import GridCanvas from './components/GridCanvas.jsx'
 import ColorPicker from './components/ColorPicker.jsx'
 import PixelModal from './components/PixelModal.jsx'
+import Leaderboard from './components/Leaderboard.jsx'
+import PrivacyModal from './components/PrivacyModal.jsx'
+import Timelapse from './components/Timelapse.jsx'
+import PixelHistory from './components/PixelHistory.jsx'
+import Pulse from './components/Pulse.jsx'
+import TimeCapsule from './components/TimeCapsule.jsx'
 
 const DEFAULT_COLORS = [
   '#FFFFFF', '#000000', '#FF4444', '#00AA00',
@@ -47,7 +53,7 @@ const pc = {
 }
 
 // ─── Bandeau RGPD ────────────────────────────────────────────────────────────
-function CookieBanner() {
+function CookieBanner({ onOpenPrivacy }) {
   const [visible, setVisible] = useState(() => !localStorage.getItem('vp_rgpd'))
   if (!visible) return null
   return (
@@ -55,8 +61,12 @@ function CookieBanner() {
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)' }}>
         Ce site mémorise votre pseudo en <strong>localStorage</strong> et stocke vos pixels sur le serveur.
         Aucun cookie tiers ni tracking.{' '}
-        <a href="https://www.cnil.fr/fr/rgpd-de-quoi-parle-t-on" target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)' }}>En savoir plus</a>
+        <button
+          onClick={onOpenPrivacy}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, textDecoration: 'underline' }}
+        >
+          Politique de confidentialité
+        </button>
       </p>
       <button
         style={{ ...s.btnSm, flexShrink: 0 }}
@@ -269,6 +279,22 @@ export default function App() {
   const [hoverData, setHoverData]     = useState(null)
   const hoverTimerRef                 = useRef(null)
 
+  // Leaderboard & Privacy
+  const [stats, setStats]             = useState({ total: 0, byPlatform: {} })
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [showPrivacy, setShowPrivacy] = useState(false)
+
+  // Heatmap, Conflicts & Timelapse
+  const [heatmapMode, setHeatmapMode]     = useState(false)
+  const [heatmapData, setHeatmapData]     = useState(null)
+  const [conflictsMode, setConflictsMode] = useState(false)
+  const [conflictsData, setConflictsData] = useState(null)
+  const [showTimelapse, setShowTimelapse] = useState(false)
+  const [showTimeCapsule, setShowTimeCapsule] = useState(false)
+
+  // Git blame pixel
+  const [pixelHistory, setPixelHistory]   = useState(null) // { x, y } | null
+
   // Admin
   const [isAdmin, setIsAdmin]         = useState(false)
   const [showAdminLogin, setShowAdminLogin] = useState(false)
@@ -293,12 +319,13 @@ export default function App() {
     })
     socket.on('disconnect', () => setConnected(false))
 
-    socket.on('grid:init', ({ grid, size, colors: cols, players: pl }) => {
+    socket.on('grid:init', ({ grid, size, colors: cols, players: pl, stats: st }) => {
       setGrid(new Uint8Array(grid))
       setGridSize(size)
       gridSizeRef.current = size
       if (cols) setColors(cols)
       if (pl)  setPlayers(pl)
+      if (st)  setStats(st)
     })
 
     socket.on('pixel:update', ({ x, y, colorId, username: who }) => {
@@ -313,11 +340,12 @@ export default function App() {
     })
 
     socket.on('players:update', (pl) => setPlayers(pl))
+    socket.on('stats:update',   (st) => setStats(st))
 
     return () => {
       socket.off('connect'); socket.off('disconnect')
       socket.off('grid:init'); socket.off('pixel:update')
-      socket.off('players:update')
+      socket.off('players:update'); socket.off('stats:update')
       socket.disconnect()
     }
   }, [])
@@ -410,6 +438,39 @@ export default function App() {
     }
   }
 
+  // ── Heatmap ──────────────────────────────────────────────────────────────
+  const toggleHeatmap = useCallback(async () => {
+    if (heatmapMode) { setHeatmapMode(false); return }
+    setConflictsMode(false)
+    try {
+      const res = await fetch(`${API}/api/heatmap`)
+      const { heatmap } = await res.json()
+      setHeatmapData(heatmap)
+      setHeatmapMode(true)
+    } catch (err) {
+      console.error('[heatmap]', err)
+    }
+  }, [heatmapMode])
+
+  // ── Zones de conflit ─────────────────────────────────────────────────────
+  const toggleConflicts = useCallback(async () => {
+    if (conflictsMode) { setConflictsMode(false); return }
+    setHeatmapMode(false)
+    try {
+      const res = await fetch(`${API}/api/conflicts`)
+      const { conflicts } = await res.json()
+      setConflictsData(conflicts)
+      setConflictsMode(true)
+    } catch (err) {
+      console.error('[conflicts]', err)
+    }
+  }, [conflictsMode])
+
+  // ── Git blame pixel ───────────────────────────────────────────────────────
+  const handlePixelRightClick = useCallback((x, y) => {
+    setPixelHistory({ x, y })
+  }, [])
+
   // ── Username ─────────────────────────────────────────────────────────────
   const handleUsernameConfirm = (val, token) => {
     localStorage.setItem('vp_username', val)
@@ -470,6 +531,59 @@ export default function App() {
         {/* Compteur joueurs */}
         <PlayerCount players={players} />
 
+        {/* Leaderboard */}
+        <button
+          style={{ ...s.btnSm, background: showLeaderboard ? 'var(--accent)' : 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '4px 10px' }}
+          onClick={() => setShowLeaderboard(v => !v)}
+          aria-label="Statistiques de la toile"
+          title="Statistiques"
+        >
+          📊
+        </button>
+
+        {/* Heatmap */}
+        <button
+          style={{ ...s.btnSm, background: heatmapMode ? 'var(--accent)' : 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '4px 10px' }}
+          onClick={toggleHeatmap}
+          aria-label="Carte de chaleur des pixels"
+          title="Heatmap — activité globale"
+        >
+          🌡
+        </button>
+
+        {/* Zones contestées */}
+        <button
+          style={{ ...s.btnSm, background: conflictsMode ? 'var(--accent)' : 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '4px 10px' }}
+          onClick={toggleConflicts}
+          aria-label="Zones de conflit"
+          title="Zones contestées — pixels écrasés par quelqu'un d'autre"
+        >
+          ⚔
+        </button>
+
+        {/* Timelapse */}
+        <button
+          style={{ ...s.btnSm, background: showTimelapse ? 'var(--accent)' : 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '4px 10px' }}
+          onClick={() => { setShowTimelapse(v => !v); setShowTimeCapsule(false) }}
+          aria-label="Timelapse de la toile"
+          title="Timelapse"
+        >
+          ⏳
+        </button>
+
+        {/* Time Capsule */}
+        <button
+          style={{ ...s.btnSm, background: showTimeCapsule ? 'var(--accent)' : 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '4px 10px' }}
+          onClick={() => { setShowTimeCapsule(v => !v); setShowTimelapse(false) }}
+          aria-label="Capsule temporelle"
+          title="Time Capsule — voir la toile à un instant précis"
+        >
+          ⏰
+        </button>
+
+        {/* Pulse */}
+        <Pulse API={API} />
+
         {/* Droite */}
         <div style={s.headerRight}>
           {/* Indicateur connexion */}
@@ -527,6 +641,8 @@ export default function App() {
             hoverData={hoverData}
             adminMode={isAdmin}
             cooldown={cooldown}
+            onPixelRightClick={handlePixelRightClick}
+            heatmapData={heatmapMode ? heatmapData : conflictsMode ? conflictsData : null}
           />
         ) : (
           <div style={s.loading}>
@@ -626,7 +742,49 @@ export default function App() {
       )}
 
       {/* ── Bandeau RGPD ── */}
-      <CookieBanner />
+      <CookieBanner onOpenPrivacy={() => setShowPrivacy(true)} />
+
+      {/* ── Leaderboard ── */}
+      {showLeaderboard && (
+        <Leaderboard stats={stats} onClose={() => setShowLeaderboard(false)} />
+      )}
+
+      {/* ── Politique de confidentialité ── */}
+      {showPrivacy && (
+        <PrivacyModal onClose={() => setShowPrivacy(false)} />
+      )}
+
+      {/* ── Timelapse ── */}
+      {showTimelapse && (
+        <Timelapse
+          gridRef={gridRef}
+          colors={colors}
+          API={API}
+          onClose={() => setShowTimelapse(false)}
+        />
+      )}
+
+      {/* ── Time Capsule ── */}
+      {showTimeCapsule && (
+        <TimeCapsule
+          gridRef={gridRef}
+          colors={colors}
+          gridSize={gridSize}
+          API={API}
+          onClose={() => setShowTimeCapsule(false)}
+        />
+      )}
+
+      {/* ── Git blame pixel ── */}
+      {pixelHistory && (
+        <PixelHistory
+          x={pixelHistory.x}
+          y={pixelHistory.y}
+          colors={colors}
+          API={API}
+          onClose={() => setPixelHistory(null)}
+        />
+      )}
     </div>
   )
 }
