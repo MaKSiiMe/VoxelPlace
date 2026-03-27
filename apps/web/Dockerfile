@@ -9,7 +9,7 @@ COPY turbo.json ./
 # Packages manifests (pas le code source, juste les package.json)
 COPY packages/config/package.json         ./packages/config/
 COPY packages/types/package.json          ./packages/types/
-COPY packages/design-system/package.json  ./packages/design-system/
+COPY packages/styles/package.json         ./packages/styles/
 COPY packages/db/package.json             ./packages/db/
 
 # Web app manifest
