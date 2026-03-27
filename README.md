@@ -7,12 +7,13 @@
 *Projet de fin d'année — Holberton School · Validation RNCP*
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
 [![Socket.io](https://img.shields.io/badge/Socket.io-4-010101?logo=socket.io)](https://socket.io)
-[![Fastify](https://img.shields.io/badge/Fastify-4-000000?logo=fastify)](https://fastify.dev)
+[![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev)
 [![Minecraft](https://img.shields.io/badge/Minecraft-Paper%201.21.1-62B47A?logo=minecraft&logoColor=white)](https://papermc.io)
+[![Turborepo](https://img.shields.io/badge/Turborepo-2-EF4444?logo=turborepo&logoColor=white)](https://turborepo.dev)
 
 ---
 
@@ -59,20 +60,20 @@ Un joueur Minecraft pose un bloc coloré. Ce pixel apparaît instantanément dan
 ```mermaid
 graph TB
     subgraph Clients
-        WEB["🌐 Browser\n(React + Canvas)"]
-        MC["⛏ Minecraft\n(Plugin Spigot)"]
+        WEB["🌐 Browser\n(Next.js + PixiJS)"]
+        MC["⛏ Minecraft\n(Plugin Paper)"]
         RB["🎮 Roblox\n(Script Lua)"]
         HY["🏔 Hytale\n(Mod API)"]
     end
 
-    subgraph Backend["Backend — Node.js"]
+    subgraph Backend["Backend — apps/socket-server"]
         API["⚡ Fastify\nREST API"]
         SIO["🔌 Socket.io\nTemps réel"]
     end
 
     subgraph Storage["Stockage"]
         REDIS[("🗄 Redis\nGrille pixels · Temps réel")]
-        PG[("🐘 PostgreSQL\nComptes utilisateurs")]
+        PG[("🐘 PostgreSQL\nHistorique · Utilisateurs")]
     end
 
     WEB  <-->|"WebSocket"| SIO
@@ -91,10 +92,10 @@ graph TB
 | Composant | Rôle |
 |-----------|------|
 | **Fastify** | Chef d'orchestre HTTP — expose les routes REST, valide les données entrantes, applique le rate limiting et les règles de sécurité |
-| **Socket.io** | Bus d'événements temps réel — reçoit les pixels des clients, les persiste via Redis, puis les diffuse à **tous** les clients connectés simultanément (Web, Minecraft, Roblox, Hytale) |
+| **Socket.io** | Bus d'événements temps réel — reçoit les pixels des clients, les persiste via Redis, puis les diffuse à **tous** les clients connectés simultanément |
 | **Redis** | Source de vérité pour la grille — buffer binaire 4 096 octets pour une lecture O(1), métadonnées par pixel dans un Hash |
-| **PostgreSQL** | Persistance des comptes utilisateurs et historique — tables `users` + `pixel_history` (append-only), requêtes préparées anti-injection SQL, window functions pour les stats |
-| **React + Canvas API** | Interface web — rendu de la grille 64×64 avec zoom/pan, palette de couleurs, connexion Socket.io pour les mises à jour en direct |
+| **PostgreSQL** | Persistance des comptes utilisateurs et historique — tables `users` + `pixel_history` (append-only), requêtes préparées anti-injection SQL |
+| **PixiJS v8** | Rendu GPU-accelerated de la grille 64×64 — zoom/pan, placement de pixels, texture dynamique via `BufferImageSource` |
 
 ---
 
@@ -102,15 +103,18 @@ graph TB
 
 | Couche | Technologie | Justification |
 |--------|-------------|---------------|
+| Monorepo | **Turborepo 2** | Build orchestré, cache partagé, dev en parallèle |
 | Runtime | **Node.js 20** | Support ESM natif, performances I/O async |
-| Framework HTTP | **Fastify 4** | 2× plus rapide qu'Express, validation JSON Schema intégrée |
+| Framework HTTP | **Fastify 5** | 2× plus rapide qu'Express, validation JSON Schema intégrée |
 | Temps réel | **Socket.io 4** | Abstraction WebSocket avec fallback, rooms, acknowledgements |
-| Grille pixels | **Redis 7** | Lecture O(1) du buffer binaire, sub-milliseconde, pub/sub |
-| Comptes utilisateurs | **PostgreSQL 16** | BDD relationnelle ACID, requêtes préparées, Merise |
+| Grille pixels | **Redis 7** | Lecture O(1) du buffer binaire, sub-milliseconde |
+| BDD | **PostgreSQL 16** | BDD relationnelle ACID, requêtes préparées, Merise |
+| ORM | **Drizzle ORM** | Type-safe, migrations versionnées, zero-overhead |
 | Authentification | **bcryptjs + JWT** | Hachage sécurisé (10 rounds), tokens signés 7 jours |
-| Frontend | **React 18 + Vite** | HMR instantané en dev, build optimisé |
-| Rendu | **Canvas API (HTML5)** | Rendu pixel-perfect, zoom/pan sans re-render React |
-| Env | **dotenv** | Séparation configuration / code |
+| Frontend | **Next.js 16 App Router** | SSR/CSR hybride, routing, Turbopack |
+| Rendu canvas | **PixiJS v8** | GPU-accelerated, texture dynamique, pixel-perfect |
+| État UI | **Zustand** | Store léger, subscriptions sélectives hors React |
+| Styles | **Tailwind CSS 4** | Design tokens Caelestia, glassmorphism |
 
 ---
 
@@ -159,12 +163,10 @@ HSET voxelplace:pixels "12,34" '{"username":"Steve","source":"minecraft",...}'
 
 ### Diagramme de séquence — Trajet d'un pixel
 
-Ce diagramme illustre le trajet complet d'un pixel posé depuis Minecraft jusqu'à sa propagation simultanée sur **toutes les plateformes connectées**.
-
 ```mermaid
 sequenceDiagram
     actor MC as ⛏ Joueur Minecraft
-    participant Plugin as Plugin Spigot
+    participant Plugin as Plugin Paper
     participant SIO as Socket.io Server
     participant Redis as Redis
     actor WEB as 🌐 Navigateur Web
@@ -184,7 +186,7 @@ sequenceDiagram
         SIO->>HY: emit("pixel:update", {x:12, y:34, colorId:3, username:"Steve"})
     end
 
-    WEB->>WEB: drawPixel(12, 34, "#00AA00")
+    WEB->>WEB: bufferSource.update() → PixiJS redraw
     RB->>RB: UpdatePart(12, 34, Color3.new(...))
     HY->>HY: SetBlock(12, 34, blockType)
 
@@ -227,7 +229,7 @@ sequenceDiagram
 
 ### `GET /api/grid`
 
-Retourne l'état complet de la grille. Appelé une seule fois au chargement initial par les clients non-WebSocket.
+Retourne l'état complet de la grille.
 
 **Réponse `200 OK`**
 
@@ -239,19 +241,9 @@ Retourne l'état complet de la grille. Appelé une seule fois au chargement init
 }
 ```
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `size` | `number` | Côté de la grille (64) |
-| `colors` | `string[8]` | Palette : `colors[colorId]` → code hex |
-| `grid` | `number[4096]` | Un entier par pixel ; accès : `grid[y * 64 + x]` |
-
 ---
 
 ### `GET /api/stats`
-
-Retourne le total de pixels posés et la répartition par plateforme.
-
-**Réponse `200 OK`**
 
 ```json
 { "total": 1420, "byPlatform": { "web": 980, "minecraft": 440 } }
@@ -261,7 +253,7 @@ Retourne le total de pixels posés et la répartition par plateforme.
 
 ### `GET /api/heatmap`
 
-Retourne le nombre de fois que chaque coordonnée a été modifiée (depuis le début).
+Nombre de modifications par coordonnée.
 
 ```json
 { "heatmap": [{ "x": 12, "y": 34, "count": 47 }, ...] }
@@ -271,7 +263,7 @@ Retourne le nombre de fois que chaque coordonnée a été modifiée (depuis le d
 
 ### `GET /api/history?limit=50000`
 
-Historique complet des pixels dans l'ordre chronologique. Utilisé par le Timelapse.
+Historique complet des pixels (timelapse).
 
 ```json
 { "history": [{ "x": 0, "y": 0, "colorId": 2, "username": "Alice", "placedAt": "..." }, ...] }
@@ -281,7 +273,7 @@ Historique complet des pixels dans l'ordre chronologique. Utilisé par le Timela
 
 ### `GET /api/pulse`
 
-Activité par minute sur les 3 dernières heures. Utilisé par le sparkline Pulse.
+Activité par minute sur les 3 dernières heures.
 
 ```json
 { "pulse": [{ "t": "2026-03-24T14:00:00Z", "count": 12 }, ...] }
@@ -291,7 +283,7 @@ Activité par minute sur les 3 dernières heures. Utilisé par le sparkline Puls
 
 ### `GET /api/snapshot?at=<ISO>`
 
-État exact du canvas à un timestamp donné. Utilisé par le Time Capsule.
+État exact du canvas à un timestamp donné.
 
 ```json
 { "grid": [0, 2, 0, ...], "size": 64, "at": "2026-03-24T14:00:00Z" }
@@ -301,7 +293,7 @@ Activité par minute sur les 3 dernières heures. Utilisé par le sparkline Puls
 
 ### `GET /api/conflicts`
 
-Pixels écrasés par un utilisateur différent (zones de conflit). SQL window function `LAG`.
+Pixels écrasés par un utilisateur différent (zones de conflit).
 
 ```json
 { "conflicts": [{ "x": 5, "y": 10, "count": 8 }, ...] }
@@ -311,22 +303,11 @@ Pixels écrasés par un utilisateur différent (zones de conflit). SQL window fu
 
 ### `GET /api/pixel/:x/:y`
 
-Retourne les métadonnées complètes du dernier pixel posé en `(x, y)`.
-Utilisé par le mode admin et les clients qui souhaitent inspecter un pixel.
-
-**Paramètres**
-
-| Paramètre | Type | Contrainte |
-|-----------|------|------------|
-| `x` | entier | 0 ≤ x ≤ 63 |
-| `y` | entier | 0 ≤ y ≤ 63 |
-
-**Réponse `200 OK`**
+Métadonnées du dernier pixel posé en `(x, y)`.
 
 ```json
 {
-  "x": 12,
-  "y": 34,
+  "x": 12, "y": 34,
   "colorId": 3,
   "username": "Steve",
   "source": "minecraft",
@@ -334,10 +315,14 @@ Utilisé par le mode admin et les clients qui souhaitent inspecter un pixel.
 }
 ```
 
-**Réponse `400 Bad Request`**
+---
+
+### `GET /api/pixel/:x/:y/history`
+
+Historique complet d'un pixel (git blame).
 
 ```json
-{ "error": "Coordonnées invalides" }
+{ "x": 12, "y": 34, "history": [{ "colorId": 3, "username": "Steve", "placedAt": "..." }, ...] }
 ```
 
 ---
@@ -350,23 +335,30 @@ Utilisé par le mode admin et les clients qui souhaitent inspecter un pixel.
 
 | Événement | Déclencheur | Payload |
 |-----------|-------------|---------|
-| `grid:init` | Connexion initiale | `{ size, colors, grid }` — grille complète |
+| `grid:init` | Connexion initiale | `{ size, colors, grid, players, stats }` |
 | `pixel:update` | Tout pixel posé ou supprimé | `{ x, y, colorId, username, source }` |
+| `players:update` | Connexion/déconnexion | `{ count, byPlatform }` |
+| `stats:update` | Après chaque pixel posé | `{ total, byPlatform }` |
 
 ### Événements émis par le client
+
+#### `player:join` — Annoncer sa connexion
+
+```js
+socket.emit("player:join", { username: "Steve", source: "web" })
+```
 
 #### `pixel:place` — Poser un pixel
 
 ```js
 socket.emit("pixel:place", {
-  x: 12,             // entier strict 0–63
-  y: 34,             // entier strict 0–63
-  colorId: 3,        // entier strict 0–7
-  username: "Steve", // max 32 caractères
-  source: "web"      // "web" | "minecraft" | "roblox" | "hytale"
+  x: 12, y: 34,
+  colorId: 3,
+  username: "Steve",
+  source: "web"   // "web" | "minecraft" | "roblox" | "hytale"
 }, (ack) => {
   if (ack.ok)       console.log("Pixel posé !")
-  if (ack.error)    console.warn(ack.error)    // ex : "Trop vite ! Attends 1s."
+  if (ack.error)    console.warn(ack.error)
   if (ack.cooldown) console.log(`Retry dans ${ack.cooldown}s`)
 })
 ```
@@ -375,7 +367,7 @@ socket.emit("pixel:place", {
 
 ```js
 socket.emit("admin:auth", "mot_de_passe", (ack) => {
-  // ack.ok    → session admin active jusqu'à déconnexion
+  // ack.ok    → session admin active
   // ack.error → "Mot de passe incorrect"
 })
 ```
@@ -383,28 +375,18 @@ socket.emit("admin:auth", "mot_de_passe", (ack) => {
 #### `admin:clear` — Supprimer un pixel *(admin requis)*
 
 ```js
-socket.emit("admin:clear", { x: 12, y: 34 }, (ack) => {
-  // ack.ok    → pixel remis à blanc, pixel:update diffusé à tous
-  // ack.error → "Non autorisé" | "Coordonnées invalides"
-})
+socket.emit("admin:clear", { x: 12, y: 34 }, (ack) => { ... })
 ```
 
 #### `admin:clearAll` — Vider toute la toile *(admin requis)*
 
 ```js
-socket.emit("admin:clearAll", null, (ack) => {
-  // ack.ok    → tous les pixels remis à blanc, pixel:update diffusé pour chaque pixel
-  // ack.error → "Non autorisé"
-})
+socket.emit("admin:clearAll", null, (ack) => { ... })
 ```
-
-> Accessible via le bouton **"🗑 Vider le canvas"** dans le mode admin du site web.
 
 ---
 
 ## 🎨 Palette de couleurs
-
-Les 8 couleurs sont ordonnées du clair au sombre en suivant le spectre visible.
 
 | ID | Nom | Hex | Swatch |
 |----|-----|-----|--------|
@@ -423,28 +405,24 @@ Les 8 couleurs sont ordonnées du clair au sombre en suivant le spectre visible.
 
 | Vecteur d'attaque | Contre-mesure |
 |-------------------|---------------|
-| **XSS via pseudo** | Suppression des caractères `< > " ' \`` et des caractères de contrôle `\x00–\x1F` côté serveur avant toute persistance |
-| **Spam de pixels** | Rate limit 1 pixel / seconde / `username` en mémoire (Map JS), vérifié exclusivement côté serveur |
-| **Coordonnées invalides** | `Number.isInteger()` + bornes 0–63 strictes ; les floats, `NaN` et `Infinity` sont rejetés |
-| **Accès admin non autorisé** | Mot de passe vérifié sur le serveur (`process.env.ADMIN_PASSWORD`) ; l'autorisation est liée à la connexion Socket.io, pas au client |
-| **Injection SQL** | Requêtes préparées `pg` (`$1, $2`) — aucune interpolation de chaîne dans les requêtes PostgreSQL |
-| **Injection Redis** | API `ioredis` avec paramètres typés — aucune interpolation de chaîne dans les commandes Redis |
-| **Mots de passe en clair** | Hachage `bcryptjs` 10 rounds avant toute persistance — jamais stockés en clair |
+| **XSS via pseudo** | Suppression des caractères `< > " ' \`` et des caractères de contrôle côté serveur |
+| **Spam de pixels** | Rate limit 1 pixel / seconde / `username` en mémoire, vérifié exclusivement côté serveur |
+| **Coordonnées invalides** | `Number.isInteger()` + bornes 0–63 strictes |
+| **Accès admin non autorisé** | Mot de passe vérifié sur le serveur (`ADMIN_PASSWORD`), autorisation liée à la session Socket.io |
+| **Injection SQL** | Requêtes préparées `pg` (`$1, $2`) — aucune interpolation dans les requêtes PostgreSQL |
+| **Injection Redis** | API `ioredis` avec paramètres typés |
+| **Mots de passe en clair** | Hachage `bcryptjs` 10 rounds |
 | **Sessions volées** | JWT signé avec `JWT_SECRET` (512 bits), expiration 7 jours |
-| **Secrets exposés** | `.env` dans `.gitignore` — `JWT_SECRET`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD` hors dépôt |
-| **Trafic non chiffré** | HTTPS avec certificat SSL nginx — redirect 80→443 |
+| **Secrets exposés** | `.env` dans `.gitignore` — jamais commité |
 
 ---
 
 ## 👑 Mode Admin
 
-L'interface de modération permet d'inspecter n'importe quel pixel et de le supprimer.
-
 ### Activation
 
-1. **Cliquer 5 fois rapidement** sur le logo `VoxelPlace` (dans un délai de 3 secondes)
+1. **Cliquer 5 fois rapidement** sur le logo `VoxelPlace`
 2. Saisir le mot de passe (`ADMIN_PASSWORD` du `.env`)
-3. Le logo devient **👑 VoxelPlace** et un badge **MODE ADMIN** apparaît
 
 ### Utilisation
 
@@ -463,26 +441,17 @@ En mode admin, cliquer sur n'importe quel pixel ouvre une fiche :
 └─────────────────────────────┘
 ```
 
-Le bouton remet le pixel à `colorId 0` (blanc) et propage l'événement à **tous les clients connectés** (Web, Minecraft, Roblox, Hytale) en temps réel.
-
-Un second bouton **"🗑 Vider le canvas"** remet **toute la toile** à zéro en une seule action (avec confirmation).
-
-### Désactivation
-
-Cliquer à nouveau 5 fois sur le logo → retour en mode normal.
-
 ---
 
 ## ⛏ Plugin Minecraft
 
-Le plugin connecte un serveur **Paper 1.21.1** au backend VoxelPlace via Socket.io. Il matérialise la toile en blocs dans le monde Minecraft et propage chaque changement en temps réel vers tous les autres clients.
+Le plugin connecte un serveur **Paper 1.21.1** au backend via Socket.io.
 
 ### Fonctionnement
 
-- Au démarrage, le plugin reçoit `grid:init` et dessine le canvas en blocs dans le monde
-- Un **clic droit** avec un bloc de la palette sur le canvas envoie `pixel:place` au serveur
-- Les `pixel:update` reçus depuis le serveur mettent à jour les blocs correspondants en jeu
-- La destruction de blocs du canvas est bloquée
+- Au démarrage, reçoit `grid:init` et dessine le canvas en blocs dans le monde
+- **Clic droit** avec un bloc de la palette → `pixel:place` envoyé au serveur
+- Les `pixel:update` reçus mettent à jour les blocs correspondants en jeu
 
 ### Palette Minecraft
 
@@ -502,32 +471,16 @@ Le plugin connecte un serveur **Paper 1.21.1** au backend VoxelPlace via Socket.
 | Commande | Description |
 |----------|-------------|
 | `/vp setup` | Définit le coin Nord-Ouest du canvas à la position actuelle |
-| `/vp fill` | Recharge la grille depuis le serveur via l'API REST |
-| `/vp reload` | Reconnecte le plugin au serveur VoxelPlace |
-| `/vp info` | Affiche l'état de la connexion et la taille du canvas |
-
-### Configuration (`plugins/VoxelPlace/config.yml`)
-
-```yaml
-server-url: "http://<IP_SERVEUR>:3001"
-canvas:
-  world: "world"
-  x: 0        # coin Nord-Ouest — défini par /vp setup
-  y: 65       # hauteur du canvas
-  z: 0
-  width: 16   # largeur (max 64)
-  height: 16  # profondeur (max 64)
-```
+| `/vp fill` | Recharge la grille depuis le serveur |
+| `/vp reload` | Reconnecte le plugin au serveur |
+| `/vp info` | Affiche l'état de la connexion |
 
 ### Build & Installation
 
 ```bash
-# Prérequis : Java 21+, Maven
-cd voxelplace-minecraft
+cd apps/game-bridges/minecraft
 mvn clean package -q
 # → target/VoxelPlace.jar
-
-# Copier dans le dossier plugins du serveur Paper
 cp target/VoxelPlace.jar /chemin/vers/plugins/
 ```
 
@@ -537,25 +490,19 @@ cp target/VoxelPlace.jar /chemin/vers/plugins/
 
 ### Infrastructure
 
-Le backend tourne en production sur un serveur Linux via Docker, accessible à distance via **Tailscale** (VPN mesh).
-
 | Service | Technologie | Accès |
 |---------|-------------|-------|
-| Frontend | Docker nginx (HTTPS) | `https://<TAILSCALE_IP>` (port 443) |
-| API VoxelPlace | Docker Node.js 20 Alpine | `http://<TAILSCALE_IP>:3001` |
-| PostgreSQL | Docker postgres:16-alpine | interne — `voxelplace-db:5432` |
-| Redis | Docker (existant) | `redis://<IP_SERVEUR>:6379` |
-| Minecraft | Docker `itzg/minecraft-server` Paper 1.21.1 | `<TAILSCALE_IP>:25565` |
-| Portainer | Docker | `https://<TAILSCALE_IP>:9443` |
+| Frontend | `voxelplace-web` — Next.js 16 standalone, Node 20-alpine (port 80→3000) | `http://100.124.153.20` |
+| Socket Server | `voxelplace-api` — Fastify 5 + Socket.io 4, Node 20-alpine (port 3001) | `http://100.124.153.20:3001` |
+| PostgreSQL | `voxelplace-db` — postgres:16-alpine (port 5432, interne) | `voxelplace-db:5432` |
+| Redis | Externe au Docker Compose | `redis://100.124.153.20:6379` |
 
-### Déployer l'API avec Docker
+### Déployer avec Docker
 
 ```bash
 # Depuis la racine du projet
 docker compose up --build -d
 ```
-
-L'API se connecte automatiquement à Redis via `REDIS_URL` défini dans `voxelplace-api/.env`.
 
 ### CI/CD — GitHub Actions
 
@@ -565,12 +512,10 @@ Chaque push sur `main` déclenche automatiquement un redéploiement :
 git push → GitHub Actions → Tailscale VPN → SSH → git pull + docker compose up
 ```
 
-Le workflow `.github/workflows/deploy.yml` nécessite trois secrets GitHub :
-
-| Secret | Description |
-|--------|-------------|
+| Secret GitHub | Description |
+|---------------|-------------|
 | `TAILSCALE_AUTHKEY` | Clé d'accès au réseau Tailscale |
-| `SSH_PRIVATE_KEY` | Clé privée SSH pour accéder au serveur |
+| `SSH_PRIVATE_KEY` | Clé privée SSH |
 | `SSH_USER` | Utilisateur SSH du serveur |
 
 ---
@@ -579,81 +524,59 @@ Le workflow `.github/workflows/deploy.yml` nécessite trois secrets GitHub :
 
 ### Prérequis
 
-- **Node.js ≥ 18** — [nodejs.org](https://nodejs.org)
-- **Redis ≥ 6** accessible depuis la machine hébergeant le backend
-
-```bash
-# Vérifier Node.js
-node --version    # v18.x.x ou supérieur
-
-# Tester la connectivité Redis
-redis-cli -h 192.168.68.51 -p 6379 ping
-# Réponse attendue : PONG
-```
-
-**Installer Node.js si nécessaire :**
-
-```bash
-# Ubuntu / Debian / WSL
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# macOS
-brew install node
-```
+- **Node.js ≥ 20**
+- **Redis** accessible (par défaut `redis://100.124.153.20:6379`)
 
 ### Cloner & Installer
 
 ```bash
 git clone <url-du-repo>
 cd VoxelPlace
-
-cd voxelplace-api && npm install && cd ..
-cd voxelplace-web && npm install && cd ..
+npm install   # installe tous les workspaces via Turborepo
 ```
 
-### Configurer le `.env`
+### Configurer les `.env`
 
 ```bash
-cp voxelplace-api/.env.example voxelplace-api/.env
+# Root (docker-compose)
+cp .env.example .env
+
+# Socket server
+cp apps/socket-server/.env.example apps/socket-server/.env
 ```
 
-Éditer `voxelplace-api/.env` :
+Éditer `apps/socket-server/.env` :
 
 ```dotenv
 PORT=3001
-REDIS_URL=redis://192.168.68.51:6379
+REDIS_URL=redis://100.124.153.20:6379
 DATABASE_URL=postgresql://voxelplace:motdepasse@localhost:5432/voxelplace
 ADMIN_PASSWORD=changeme
 JWT_SECRET=une_cle_secrete_longue_generee_avec_openssl
 TEST_USERNAMES=testbot,devmax
 ```
 
-> 💡 Si le backend tourne sur une autre machine, créer `voxelplace-web/.env.local` :
-> ```dotenv
-> VITE_API_URL=http://<IP_SERVEUR>:3001
-> ```
-
 ### Lancer en développement
 
 ```bash
-# Terminal 1 — Backend
-cd voxelplace-api && npm run dev
-# ✓ [Fastify] Serveur démarré sur http://0.0.0.0:3001
-# ✓ [Redis] Connecté à redis://192.168.68.51:6379
-
-# Terminal 2 — Frontend
-cd voxelplace-web && npm run dev
-# ✓ VITE ready on http://localhost:5173
+npm run dev
+# Lance tous les workspaces en parallèle via Turbo
+# → Socket server : http://localhost:3001
+# → Web           : http://localhost:3000
 ```
 
-Ouvrir [http://localhost:5173](http://localhost:5173) 🎉
+Ou workspace par workspace :
+
+```bash
+npx turbo run dev --filter=@voxelplace/socket-server
+npx turbo run dev --filter=@voxelplace/web
+```
 
 ### Build de production
 
 ```bash
-cd voxelplace-web && npm run build
-cd voxelplace-api && npm start
+npm run build
+docker compose up --build -d
 ```
 
 ---
@@ -661,65 +584,76 @@ cd voxelplace-api && npm start
 ## 📁 Structure du projet
 
 ```
-VoxelPlace/
-├── .github/workflows/
-│   └── deploy.yml                   # CI/CD — déploiement automatique sur push main
-├── docker-compose.yml               # Orchestration Docker (API + frontend)
-├── docs/
-│   └── uml/
-│       ├── class-diagram.md         # Diagramme de classes (MermaidJS)
-│       ├── use-case.md              # Diagramme de cas d'utilisation
-│       ├── sequence-diagram.md      # Diagrammes de séquence (3 scénarios)
-│       ├── deployment-diagram.md    # Architecture de déploiement
-│       └── erd-merise.md            # ERD + MCD/MLD Merise + justification Redis
-├── voxelplace-api/                  # Backend Fastify + Socket.io
-│   ├── src/
-│   │   ├── index.js                 # Serveur, routes REST, événements Socket.io
-│   │   ├── auth.js                  # Register / Login — bcrypt + JWT + requêtes SQL préparées
-│   │   ├── db.js                    # Pool PostgreSQL + connectWithRetry()
-│   │   ├── grid.js                  # Couche Redis (buffer binaire + HSET)
-│   │   └── utils.js                 # Fonctions pures : validation, sanitisation
-│   ├── db/
-│   │   └── init.sql                 # Schéma PostgreSQL — tables users + pixel_history + index
-│   ├── tests/
-│   │   ├── auth.test.js             # 10 tests — hashPassword, verifyPassword, JWT
-│   │   ├── validation.test.js       # 18 tests — isValidCoord, sanitize, validatePixel
-│   │   └── grid.test.js             # 6 tests — getPixelIndex, GRID_SIZE
-│   ├── .env                         # PORT, REDIS_URL, DATABASE_URL, ADMIN_PASSWORD, JWT_SECRET
-│   ├── .env.example
-│   └── package.json                 # script: npm test (34 tests)
+VoxelPlace/                              # Monorepo Turborepo
+├── apps/
+│   ├── socket-server/                   # @voxelplace/socket-server
+│   │   ├── src/
+│   │   │   ├── index.js                 # Fastify + Socket.io + routes REST
+│   │   │   ├── features/
+│   │   │   │   ├── auth/routes.js       # Register / Login — bcrypt + JWT
+│   │   │   │   └── canvas/
+│   │   │   │       ├── grid.js          # Couche Redis (buffer binaire + HSET)
+│   │   │   │       └── utils.js         # Validation, sanitisation XSS
+│   │   │   └── shared/db.js             # Pool PostgreSQL + connectWithRetry()
+│   │   ├── db/init.sql                  # Schéma PostgreSQL (users + pixel_history)
+│   │   ├── tests/                       # Tests unitaires (auth, grid, validation)
+│   │   └── Dockerfile
+│   │
+│   ├── web/                             # @voxelplace/web — Next.js 16 App Router
+│   │   ├── app/
+│   │   │   ├── layout.tsx               # Root layout + styles
+│   │   │   ├── (game)/page.tsx          # Page principale — canvas + HUD
+│   │   │   └── dashboard/page.tsx       # Dashboard admin (Phase 5)
+│   │   ├── features/
+│   │   │   ├── canvas/
+│   │   │   │   ├── components/CanvasEngine.tsx   # Shell React du moteur
+│   │   │   │   ├── hooks/usePixiCanvas.ts        # Moteur PixiJS v8 complet
+│   │   │   │   └── store.ts                      # Zustand — grid, couleur, hover
+│   │   │   ├── hud/
+│   │   │   │   ├── components/GameFrame.tsx      # Cadre fixe autour du canvas
+│   │   │   │   ├── components/SidebarLeft.tsx    # Navigation gauche
+│   │   │   │   ├── components/StatusPills.tsx    # Pills flottantes en haut
+│   │   │   │   ├── components/ColorDock.tsx      # Palette flottante en bas
+│   │   │   │   └── store.ts                      # Zustand — état UI cockpit
+│   │   │   ├── realtime/
+│   │   │   │   ├── socket.ts                     # Singleton Socket.io client
+│   │   │   │   └── hooks/useSocket.ts            # Connexion + événements
+│   │   │   ├── admin/                            # (Phase 5) Modération
+│   │   │   ├── stats/                            # (Phase 5) Analytics
+│   │   │   └── platforms/                        # (Phase 7) Bridges UI
+│   │   └── shared/lib/utils.ts          # cn() — Tailwind class merging
+│   │
+│   └── game-bridges/
+│       ├── minecraft/                   # Plugin Paper 1.21.1 (Java)
+│       │   ├── src/main/java/fr/voxelplace/minecraft/
+│       │   │   ├── VoxelPlacePlugin.java
+│       │   │   ├── CanvasManager.java
+│       │   │   ├── SocketManager.java
+│       │   │   ├── CanvasListener.java
+│       │   │   └── VoxelCommand.java
+│       │   └── pom.xml
+│       ├── roblox/                      # (prévu) Script Lua
+│       └── hytale/                      # (prévu) Mod API
 │
-├── voxelplace-web/                  # Frontend React + Vite
-│   ├── src/
-│   │   ├── App.jsx                  # Composant racine, socket, admin, RGPD banner
-│   │   ├── socket.js                # Instance Socket.io partagée
-│   │   └── components/
-│   │       ├── GridCanvas.jsx       # Canvas HTML5, zoom/pan, hover tooltip, heatmap overlay, clic droit
-│   │       ├── ColorPicker.jsx      # Palette 8 couleurs avec raccourcis clavier
-│   │       ├── PixelModal.jsx       # Fiche pixel (inspection + suppression admin)
-│   │       ├── PixelHistory.jsx     # Git log d'un pixel — clic droit → historique complet
-│   │       ├── Leaderboard.jsx      # Stats pixels par plateforme en temps réel
-│   │       ├── PrivacyModal.jsx     # Politique de confidentialité RGPD
-│   │       ├── Timelapse.jsx        # Replay chronologique de la toile
-│   │       ├── Pulse.jsx            # Sparkline pixels/minute — 3 dernières heures
-│   │       └── TimeCapsule.jsx      # Restaure l'état exact du canvas à un timestamp
-│   ├── Dockerfile                   # Build Vite → nginx
-│   ├── nginx.conf                   # Proxy /api et /socket.io vers l'API
-│   ├── index.html                   # SEO : title, meta description, Open Graph
-│   ├── vite.config.js
-│   └── package.json
+├── packages/
+│   ├── db/                              # @voxelplace/db — Drizzle ORM
+│   │   ├── src/schema/
+│   │   │   ├── canvas.ts               # pixel_history
+│   │   │   └── users.ts                # users
+│   │   ├── migrations/
+│   │   │   └── 0000_initial_schema.sql
+│   │   └── drizzle.config.ts
+│   ├── types/                           # @voxelplace/types — Interfaces TS partagées
+│   │   └── src/ (pixel, user, platform)
+│   ├── styles/                          # @voxelplace/styles — Tailwind + tokens Caelestia
+│   │   └── src/globals.css
+│   └── config/                          # @voxelplace/config — tsconfig partagés
+│       └── tsconfig/ (base, nextjs)
 │
-└── voxelplace-minecraft/            # Plugin Paper 1.21.1
-    ├── src/main/java/fr/voxelplace/minecraft/
-    │   ├── VoxelPlacePlugin.java    # Point d'entrée Bukkit
-    │   ├── CanvasManager.java       # Dessin des blocs, mapping colorId ↔ Material
-    │   ├── SocketManager.java       # Client Socket.io, events grid:init / pixel:update
-    │   ├── CanvasListener.java      # Clic droit, destruction, action bar (PlayerMove)
-    │   └── VoxelCommand.java        # /vp setup|fill|reload|info|help
-    ├── src/main/resources/
-    │   ├── plugin.yml
-    │   └── config.yml
-    └── pom.xml                      # Maven + maven-shade-plugin
+├── docs/uml/                            # Diagrammes UML (Mermaid)
+├── docker-compose.yml
+├── turbo.json
+└── package.json                         # Workspaces npm
 ```
 
 ---
@@ -730,84 +664,85 @@ VoxelPlace/
 gantt
     title VoxelPlace — Roadmap
     dateFormat  YYYY-MM-DD
-    section Phase 1 — MVP Web
-    Serveur Fastify + Redis          :done, 2026-01-01, 2026-01-15
-    Canvas React + Socket.io         :done, 2026-01-10, 2026-01-20
-    section Phase 2 — UX & Sécurité
-    Zoom / Pan Canvas                :done, 2026-01-20, 2026-01-25
-    Rate limiting + XSS              :done, 2026-01-22, 2026-01-28
-    section Phase 3 — Intégration Minecraft
-    Plugin Paper 1.21.1 (Java)       :done, 2026-02-01, 2026-03-01
-    Mapping blocs ↔ colorId          :done, 2026-02-15, 2026-03-01
-    section Phase 4 — Admin & Modération
-    Dashboard admin                  :done, 2026-03-01, 2026-03-15
-    Inspection & suppression pixels  :done, 2026-03-01, 2026-03-15
-    section Phase 4b — DevOps
-    Dockerisation API                :done, 2026-03-15, 2026-03-20
-    CI/CD GitHub Actions             :done, 2026-03-15, 2026-03-20
-    Accès distant Tailscale          :done, 2026-03-15, 2026-03-20
-    section Phase 5 — Analytics & Visualisation
-    pixel_history PostgreSQL         :done, 2026-03-01, 2026-03-10
-    Heatmap + Timelapse              :done, 2026-03-10, 2026-03-20
-    Git log pixel + Pulse            :done, 2026-03-20, 2026-03-24
-    Time Capsule + Zones contestées  :done, 2026-03-20, 2026-03-24
+    section Phase 1 — Architecture
+    Monorepo Turborepo + migration     :done, 2026-03-01, 2026-03-15
+    Drizzle ORM + PostgreSQL Docker    :done, 2026-03-15, 2026-03-20
+    section Phase 2 — Canvas PixiJS
+    Moteur PixiJS v8 (GPU)             :done, 2026-03-20, 2026-03-27
+    Socket.io temps réel               :done, 2026-03-20, 2026-03-27
+    section Phase 3 — HUD & Cockpit
+    GameFrame + SidebarLeft            :active, 2026-03-27, 2026-04-10
+    ColorDock + StatusPills            :active, 2026-03-27, 2026-04-10
+    section Phase 4 — Auth Clerk
+    Inscription / Connexion            :2026-04-10, 2026-04-20
+    Cooldown Redis par utilisateur     :2026-04-10, 2026-04-20
+    section Phase 5 — Analytics
+    Dashboard admin                    :2026-04-20, 2026-05-01
+    Heatmap + Timelapse                :2026-04-20, 2026-05-01
     section Phase 6 — Cross-Game
-    Client Roblox (Lua)              :2026-04-01, 2026-05-01
-    Client Hytale (Mod API)          :2026-04-01, 2026-05-01
+    Plugin Minecraft                   :done, 2026-02-01, 2026-03-01
+    Client Roblox (Lua)                :2026-05-01, 2026-06-01
+    Client Hytale                      :2026-05-01, 2026-06-01
 ```
 
 ### Détail des phases
 
 <details>
-<summary>✅ Phase 1 — MVP Web & Backend</summary>
+<summary>✅ Phase 1 — Monorepo & Infrastructure</summary>
 
-- Serveur Fastify avec routes REST (`/api/grid`, `/api/pixel/:x/:y`)
-- Persistance Redis duale (buffer binaire + HSET métadonnées)
-- Frontend React avec Canvas HTML5 et connexion Socket.io
-- Diffusion temps réel des pixels à tous les clients connectés
-
-</details>
-
-<details>
-<summary>✅ Phase 2 — Polissage UX & Sécurité</summary>
-
-- Zoom (molette) et pan (clic+glisser) sur le canvas, centré sur le curseur
-- Rate limiting serveur : 1 pixel/seconde/username
-- Sanitisation XSS des pseudos et sources
-- Validation stricte des coordonnées (`Number.isInteger`, bornes 0–63)
-- Layout plein écran avec barre de palette en bas
+- Migration vers Turborepo (`apps/`, `packages/`)
+- `apps/socket-server` : Fastify 5 + Socket.io + Redis + PostgreSQL
+- `packages/db` : Drizzle ORM, schémas `pixel_history` + `users`
+- `packages/types` : interfaces TypeScript partagées
+- Docker Compose mis à jour, CI/CD GitHub Actions
 
 </details>
 
 <details>
-<summary>✅ Phase 3 — Intégration Minecraft</summary>
+<summary>✅ Phase 2 — Moteur Canvas PixiJS v8</summary>
 
-- Plugin **Paper 1.21.1** avec client Socket.io Java (socket.io-client 2.1.0 shadé)
-- **Clic droit** sur un bloc du canvas → `pixel:place` envoyé au serveur avec rate limiting
-- Réception des `pixel:update` → mise à jour immédiate des blocs en jeu
-- Canvas configurable (taille, position, monde) via `config.yml`
-- Commandes `/vp setup|fill|reload|info` (permission OP)
-- Comptes test sans cooldown via `TEST_USERNAMES` dans `.env`
-- Mise à jour optimiste : le bloc est dessiné immédiatement, revert si le serveur refuse
+- Rendu GPU via `BufferImageSource` + `Texture` PixiJS v8
+- Zoom centré sur le curseur (molette), pan (clic molette ou Espace+glisser)
+- Clic → `pixel:place` via Socket.io avec acknowledgement
+- Connexion Socket.io avec username persisté en localStorage
+- Zustand pour la grille, la couleur sélectionnée, les joueurs connectés
 
 </details>
 
 <details>
-<summary>✅ Phase 4 — Dashboard Admin & Modération <em>(RNCP)</em></summary>
+<summary>🔄 Phase 3 — HUD & Interface Cockpit</summary>
 
-- Authentification admin par mot de passe via Socket.io
-- Inspection de tout pixel : auteur, source, timestamp
-- Suppression (remise à blanc) avec propagation instantanée vers Web, Minecraft, Roblox et Hytale
-- Déclencheur discret : 5 clics sur le logo
+- `GameFrame` : cadre fixe autour du canvas (header, sidebars, footer continus)
+- `ColorDock` : palette 8 couleurs flottante
+- `StatusPills` : stats temps réel en haut
+- `SidebarLeft` : navigation features
+- Thème Light/Dark via `next-themes`
 
 </details>
 
 <details>
-<summary>📋 Phase 5 — Extension Cross-Game</summary>
+<summary>📋 Phase 4 — Authentification Clerk</summary>
 
-- Client Roblox en Lua : WebSocket vers le backend, mapping `BrickColor` → `colorId`
-- Client Hytale : intégration via Mod API, mapping blocs → `colorId`
-- Les deux plateformes reçoivent et émettent des `pixel:update` comme n'importe quel autre client
+- Comptes utilisateurs via Clerk
+- Cooldown Redis par compte authentifié
+- Protection des routes admin
+
+</details>
+
+<details>
+<summary>📋 Phase 5 — Analytics & Admin</summary>
+
+- Dashboard admin : heatmap, timelapse, pulse, git-blame pixel
+- Modération : suppression pixel, vider le canvas
+- Stats cross-platform en temps réel
+
+</details>
+
+<details>
+<summary>📋 Phase 6 — Cross-Game</summary>
+
+- Client Roblox en Lua
+- Client Hytale via Mod API
 
 </details>
 

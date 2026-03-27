@@ -1,0 +1,20 @@
+{
+  "name": "@voxelplace/socket-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.8.4",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.3",
+    "socket.io": "^4.7.5"
+  }
+}
