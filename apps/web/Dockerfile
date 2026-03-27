@@ -27,6 +27,9 @@ COPY --from=deps /app/node_modules         ./node_modules
 # Source complète (on a besoin des packages locaux)
 COPY . .
 
+# Réinstalle dans le contexte workspace complet (résout les symlinks + types TypeScript)
+RUN npm install --ignore-scripts
+
 # Variables nécessaires au build Next.js
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
