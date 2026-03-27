@@ -2,6 +2,7 @@
   "name": "@voxelplace/web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.0.0",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -30,12 +31,12 @@
     "socket.io-client": "latest",
     "tailwind-merge": "latest",
     "tailwindcss": "^4.2.2",
-    "zustand": "latest"
-  },
-  "devDependencies": {
+    "zustand": "latest",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  },
+  "devDependencies": {
     "@voxelplace/config": "*",
     "typescript": "^5.5.0"
   }
