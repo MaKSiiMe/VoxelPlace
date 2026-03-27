@@ -1,0 +1,14 @@
+# URL du serveur VoxelPlace (sans trailing slash)
+server-url: "http://100.124.153.20:3001"
+
+# Préfixe affiché dans le chat
+prefix: "&6[VoxelPlace]&r "
+
+# Canvas dans le monde Minecraft
+canvas:
+  world: "world"
+  x: 0        # coin Nord-Ouest (X) — défini automatiquement par /vp setup
+  y: 64       # hauteur du sol du canvas
+  z: 0        # coin Nord-Ouest (Z) — défini automatiquement par /vp setup
+  width: 16   # largeur du canvas (max 64)
+  height: 16  # profondeur du canvas (max 64)

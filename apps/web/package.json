@@ -1,0 +1,42 @@
+{
+  "name": "@voxelplace/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "latest",
+    "@phosphor-icons/react": "latest",
+    "@pixi/react": "latest",
+    "@radix-ui/react-hover-card": "latest",
+    "@radix-ui/react-navigation-menu": "latest",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@voxelplace/styles": "*",
+    "@voxelplace/types": "*",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "framer-motion": "latest",
+    "lucide-react": "latest",
+    "next": "^16.2.1",
+    "next-themes": "latest",
+    "pixi.js": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "socket.io-client": "latest",
+    "tailwind-merge": "latest",
+    "tailwindcss": "^4.2.2",
+    "zustand": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@voxelplace/config": "*",
+    "typescript": "^5.5.0"
+  }
+}

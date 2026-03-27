@@ -1,12 +1,20 @@
 # Dépendances
 node_modules/
+.pnp
+.pnp.js
 
 # Variables d'environnement
 .env
 .env.local
+.env.*.local
 
-# Build frontend
+# Build
 dist/
+.next/
+out/
+
+# Turbo
+.turbo/
 
 # Build Java/Maven
 target/
@@ -14,6 +22,11 @@ target/
 
 # Logs
 *.log
+npm-debug.log*
+
+# Divers
+.DS_Store
+*.pem
 
 # Outils de développement local
 .vscode/

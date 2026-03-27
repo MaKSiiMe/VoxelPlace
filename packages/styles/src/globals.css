@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Couleurs Caelestia Light ─────────────────── */
+  --color-bg-light: #faf7f5;
+  --color-surface-light: #f0ebe6;
+  --color-border-light: rgba(0, 0, 0, 0.08);
+  --color-text-light: #1a1410;
+  --color-accent-rose: #e8a598;
+  --color-accent-brown: #8b6047;
+
+  /* ── Couleurs Caelestia Dark ──────────────────── */
+  --color-bg-dark: #0a0a0f;
+  --color-surface-dark: #111118;
+  --color-border-dark: rgba(255, 255, 255, 0.08);
+  --color-text-dark: #e8e4f0;
+  --color-accent-blue: #3d6aff;
+  --color-accent-blue-light: #adc6ff;
+
+  /* ── Hublot ───────────────────────────────────── */
+  --hublot-radius: 48px;
+  --hublot-margin: 24px;
+  --hublot-border: rgba(255, 255, 255, 0.10);
+}
+
+/* ── Glassmorphism ────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-heavy {
+  background: rgba(255, 255, 255, 0.40);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+}
