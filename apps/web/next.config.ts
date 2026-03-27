@@ -6,14 +6,7 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@phosphor-icons/react'],
   },
-  webpack(config) {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@features': `${__dirname}/features`,
-      '@shared':   `${__dirname}/shared`,
-    }
-    return config
-  },
+  turbopack: {},
 }
 
 export default nextConfig
