@@ -32,3 +32,5 @@ npm-debug.log*
 .vscode/
 .claude/
 CLAUDE.md
+RNCP_Docs/
+tools/
