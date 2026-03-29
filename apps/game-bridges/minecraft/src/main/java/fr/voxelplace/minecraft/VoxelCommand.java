@@ -28,6 +28,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase()) {
             case "setup"  -> cmdSetup(sender);
+            case "offset" -> cmdOffset(sender, args);
             case "fill"   -> cmdFill(sender);
             case "reload" -> cmdReload(sender);
             case "info"   -> cmdInfo(sender);
@@ -61,6 +62,32 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
             .append(Component.text("/vp fill", NamedTextColor.YELLOW))
             .append(Component.text(" pour charger la grille depuis le serveur.", NamedTextColor.GRAY))
             .build());
+    }
+
+    private void cmdOffset(CommandSender sender, String[] args) {
+        if (!sender.isOp()) {
+            sender.sendMessage(Component.text().append(prefix())
+                .append(Component.text("Permission insuffisante.", NamedTextColor.RED)).build());
+            return;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text().append(prefix())
+                .append(Component.text("Usage : /vp offset <x> <z>  (coords grille 0-2047)", NamedTextColor.YELLOW)).build());
+            return;
+        }
+        try {
+            int ox = Integer.parseInt(args[1]);
+            int oz = Integer.parseInt(args[2]);
+            canvasManager.setOffset(ox, oz);
+            sender.sendMessage(Component.text().append(prefix())
+                .append(Component.text("Offset défini : grille (" + canvasManager.getOffsetX() + ", " + canvasManager.getOffsetZ() + ")  →  math ("
+                    + (canvasManager.getOffsetX() - 1024) + ", " + (canvasManager.getOffsetZ() - 1024) + ")", NamedTextColor.GREEN)).build());
+            sender.sendMessage(Component.text().append(prefix())
+                .append(Component.text("Faites /vp fill pour redessiner.", NamedTextColor.GRAY)).build());
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text().append(prefix())
+                .append(Component.text("Valeurs invalides.", NamedTextColor.RED)).build());
+        }
     }
 
     private void cmdFill(CommandSender sender) {
@@ -120,6 +147,11 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
                     + "  coin (" + canvasManager.getCornerX() + ", "
                     + canvasManager.getCornerY() + ", " + canvasManager.getCornerZ() + ")", NamedTextColor.GRAY))
                 .build());
+            sender.sendMessage(Component.text()
+                .append(prefix())
+                .append(Component.text("Offset grille : (" + canvasManager.getOffsetX() + ", " + canvasManager.getOffsetZ() + ")"
+                    + "  →  math (" + (canvasManager.getOffsetX() - 1024) + ", " + (canvasManager.getOffsetZ() - 1024) + ")", NamedTextColor.GRAY))
+                .build());
         }
     }
 
@@ -131,9 +163,10 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
 
         if (sender.isOp()) {
             sender.sendMessage(Component.text("  Commandes admin (OP)", NamedTextColor.RED));
-            sender.sendMessage(help("/vp setup",  "Définit le coin du canvas à ta position"));
-            sender.sendMessage(help("/vp fill",   "Redessine le canvas depuis le serveur"));
-            sender.sendMessage(help("/vp reload", "Reconnecte au serveur VoxelPlace"));
+            sender.sendMessage(help("/vp setup",          "Définit le coin du canvas à ta position"));
+            sender.sendMessage(help("/vp offset <x> <z>", "Déplace la fenêtre dans la grille 2048×2048"));
+            sender.sendMessage(help("/vp fill",           "Redessine le canvas depuis le serveur"));
+            sender.sendMessage(help("/vp reload",         "Reconnecte au serveur VoxelPlace"));
         }
         sender.sendMessage(Component.text("─────────────────────────────────────", NamedTextColor.GOLD));
     }
@@ -152,7 +185,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("help", "info", "setup", "fill", "reload").stream()
+            return List.of("help", "info", "setup", "offset", "fill", "reload").stream()
                 .filter(s -> s.startsWith(args[0].toLowerCase()))
                 .toList();
         }

@@ -73,7 +73,7 @@ public class SocketManager {
             socket.on("pixel:update", args -> {
                 try {
                     JSONObject data = (JSONObject) args[0];
-                    canvasManager.setPixel(data.getInt("x"), data.getInt("y"), data.getInt("colorId"));
+                    canvasManager.setPixelFromGrid(data.getInt("x"), data.getInt("y"), data.getInt("colorId"));
                 } catch (Exception e) {
                     plugin.getLogger().warning("[Socket] pixel:update : " + e.getMessage());
                 }
