@@ -59,15 +59,9 @@ public class SocketManager {
                 plugin.getLogger().warning("[Socket] Erreur de connexion : " + msg);
             });
 
-            // Grille complète à la connexion
-            socket.on("grid:init", args -> {
-                try {
-                    JSONObject data = (JSONObject) args[0];
-                    canvasManager.initGrid(data.getJSONArray("grid"));
-                } catch (Exception e) {
-                    plugin.getLogger().severe("[Socket] grid:init : " + e.getMessage());
-                }
-            });
+            // Grille à la connexion — on ignore le payload complet (trop grand)
+            // et on charge seulement la fenêtre via l'endpoint HTTP dédié
+            socket.on("grid:init", args -> requestGridRefresh());
 
             // Mise à jour d'un pixel (broadcast de tous les clients)
             socket.on("pixel:update", args -> {
@@ -124,19 +118,26 @@ public class SocketManager {
 
     // ── Rechargement via REST ───────────────────────────────────────────────
 
-    /** Recharge la grille complète depuis l'API REST (utilisé par /vp fill) */
+    /** Recharge la fenêtre du canvas depuis l'API REST (utilisé par /vp fill) */
     public void requestGridRefresh() {
-        String url = serverUrl + "/api/grid";
+        int ox = canvasManager.getOffsetX();
+        int oz = canvasManager.getOffsetZ();
+        int w  = canvasManager.getWidth();
+        int h  = canvasManager.getHeight();
+        String url = serverUrl + "/api/grid/window?x=" + ox + "&z=" + oz + "&w=" + w + "&h=" + h;
+
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                HttpClient client = HttpClient.newHttpClient();
+                HttpClient client = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .build();
                 HttpRequest req   = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(java.time.Duration.ofSeconds(5))
+                    .timeout(java.time.Duration.ofSeconds(30))
                     .build();
                 HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
                 JSONObject data = new JSONObject(resp.body());
-                canvasManager.initGrid(data.getJSONArray("grid"));
+                canvasManager.initGridWindow(data.getJSONArray("grid"));
             } catch (Exception e) {
                 plugin.getLogger().severe("[API] Erreur rechargement grille : " + e.getMessage());
             }

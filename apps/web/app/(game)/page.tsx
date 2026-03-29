@@ -28,7 +28,7 @@ export default function GamePage() {
   return (
     <main className="w-screen h-screen overflow-hidden">
       <CanvasEngine username={username} />
-      <GameFrame />
+<GameFrame />
     </main>
   )
 }

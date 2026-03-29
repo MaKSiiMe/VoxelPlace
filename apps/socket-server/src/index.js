@@ -83,6 +83,24 @@ fastify.get('/api/grid', async (_req, reply) => {
   reply.send({ grid: Array.from(buf), size: GRID_SIZE, colors: COLORS })
 })
 
+// Fenêtre de la grille : retourne seulement les pixels dans la zone demandée
+// GET /api/grid/window?x=896&z=896&w=256&h=256
+fastify.get('/api/grid/window', async (req, reply) => {
+  const ox = Math.max(0, parseInt(req.query.x ?? 0, 10))
+  const oz = Math.max(0, parseInt(req.query.z ?? 0, 10))
+  const w  = Math.min(2048, parseInt(req.query.w ?? 64, 10))
+  const h  = Math.min(2048, parseInt(req.query.h ?? 64, 10))
+
+  const buf    = await loadGrid(redis)
+  const window = new Array(w * h)
+  for (let dz = 0; dz < h; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      window[dz * w + dx] = buf[(oz + dz) * GRID_SIZE + (ox + dx)] ?? 0
+    }
+  }
+  reply.send({ grid: window, offsetX: ox, offsetZ: oz, width: w, height: h, colors: COLORS })
+})
+
 fastify.get('/api/stats', async (_req, reply) => {
   reply.send(await getStats())
 })
