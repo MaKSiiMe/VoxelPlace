@@ -77,18 +77,20 @@ public class CanvasListener implements Listener {
             return;
         }
 
-        int px = coords[0];
-        int py = coords[1];
+        int dx = coords[0];
+        int dz = coords[1];
         String username = event.getPlayer().getName();
 
-        // Mise à jour optimiste immédiate
-        int prevColorId = canvasManager.getColorAt(px, py);
-        canvasManager.setPixel(px, py, colorId);
+        // Mise à jour optimiste immédiate (coords locales)
+        int prevColorId = canvasManager.getColorAt(dx, dz);
+        canvasManager.setPixelLocal(dx, dz, colorId);
 
-        socketManager.emitPixelPlace(px, py, colorId, username, ack -> {
+        // Emission en coords grille (0-2047)
+        int[] grid = canvasManager.localToGrid(dx, dz);
+        socketManager.emitPixelPlace(grid[0], grid[1], colorId, username, ack -> {
             if (ack != null && ack.has("error")) {
                 String err = ack.optString("error", "Erreur inconnue");
-                canvasManager.setPixel(px, py, prevColorId);
+                canvasManager.setPixelLocal(dx, dz, prevColorId);
                 event.getPlayer().sendMessage(Component.text()
                     .append(prefix())
                     .append(Component.text(err, NamedTextColor.RED))
@@ -139,12 +141,13 @@ public class CanvasListener implements Listener {
         int[] coords = canvasManager.getCanvasCoords(below);
         if (coords == null) return;
 
-        int px      = coords[0];
-        int py      = coords[1];
-        int colorId = canvasManager.getColorAt(px, py) & 0x07;
+        int dx      = coords[0];
+        int dz      = coords[1];
+        int colorId = canvasManager.getColorAt(dx, dz) & 0x07;
 
+        int[] math = canvasManager.localToMath(dx, dz);
         var bar = Component.text()
-            .append(Component.text("(" + px + ", " + py + ")", NamedTextColor.WHITE))
+            .append(Component.text("(" + math[0] + ", " + math[1] + ")", NamedTextColor.WHITE))
             .append(Component.text("  ■  ", COLOR_CHAT[colorId]))
             .append(Component.text(COLOR_NAMES[colorId], COLOR_CHAT[colorId]))
             .build();

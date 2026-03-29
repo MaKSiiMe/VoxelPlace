@@ -14,9 +14,13 @@ public class CanvasManager {
 
     private final VoxelPlacePlugin plugin;
 
+    private static final int GRID_SIZE = 2048;
+    private static final int GRID_HALF = GRID_SIZE / 2; // 1024 = math (0,0)
+
     private World  world;
     private int    cornerX, cornerY, cornerZ;
     private int    width, height;
+    private int    offsetX, offsetZ; // coin de la fenêtre dans l'espace grille 0-2047
     private boolean configured = false;
 
     // Cache local de la grille (colorId par pixel)
@@ -67,8 +71,10 @@ public class CanvasManager {
         cornerX  = cfg.getInt("canvas.x",      0);
         cornerY  = cfg.getInt("canvas.y",      64);
         cornerZ  = cfg.getInt("canvas.z",      0);
-        width    = Math.min(cfg.getInt("canvas.width",  16), 64);
-        height   = Math.min(cfg.getInt("canvas.height", 16), 64);
+        width    = Math.min(cfg.getInt("canvas.width",   64), GRID_SIZE);
+        height   = Math.min(cfg.getInt("canvas.height",  64), GRID_SIZE);
+        offsetX  = cfg.getInt("canvas.offsetX", GRID_HALF);
+        offsetZ  = cfg.getInt("canvas.offsetZ", GRID_HALF);
         grid     = new byte[width * height];
         configured = (world != null);
 
@@ -88,41 +94,50 @@ public class CanvasManager {
         configured = true;
 
         var cfg = plugin.getConfig();
-        cfg.set("canvas.world", world.getName());
-        cfg.set("canvas.x", cornerX);
-        cfg.set("canvas.y", cornerY);
-        cfg.set("canvas.z", cornerZ);
+        cfg.set("canvas.world",   world.getName());
+        cfg.set("canvas.x",       cornerX);
+        cfg.set("canvas.y",       cornerY);
+        cfg.set("canvas.z",       cornerZ);
+        cfg.set("canvas.offsetX", offsetX);
+        cfg.set("canvas.offsetZ", offsetZ);
         plugin.saveConfig();
     }
 
     /**
-     * Met à jour un pixel dans le cache ET dans le monde (thread-safe).
-     * Peut être appelé depuis n'importe quel thread.
+     * Met à jour un pixel depuis les coordonnées locales (0-based dans la fenêtre).
+     * Utilisé pour la mise à jour optimiste depuis CanvasListener.
      */
-    public void setPixel(int x, int y, int colorId) {
-        if (!configured || x < 0 || x >= width || y < 0 || y >= height) return;
-        grid[y * width + x] = (byte) colorId;
+    public void setPixelLocal(int dx, int dz, int colorId) {
+        if (!configured || dx < 0 || dx >= width || dz < 0 || dz >= height) return;
+        grid[dz * width + dx] = (byte) colorId;
         Material mat = COLOR_MATERIALS[colorId & 0x07];
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Block block = world.getBlockAt(cornerX + x, cornerY, cornerZ + y);
+            Block block = world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz);
             if (block.getType() != mat) block.setType(mat, false);
         });
     }
 
     /**
-     * Charge toute la grille depuis le JSONArray renvoyé par grid:init.
-     * La grille serveur est toujours 64 colonnes ; on prend les width×height
-     * premiers pixels (coin haut-gauche).
+     * Met à jour un pixel depuis les coordonnées grille (0-2047).
+     * Utilisé par les événements socket pixel:update.
+     */
+    public void setPixelFromGrid(int gridX, int gridY, int colorId) {
+        setPixelLocal(gridX - offsetX, gridY - offsetZ, colorId);
+    }
+
+    /**
+     * Charge la fenêtre de la grille depuis le JSONArray renvoyé par grid:init.
+     * Seuls les width×height pixels correspondant à l'offset configuré sont dessinés.
      */
     public void initGrid(JSONArray gridData) {
         if (!configured) return;
         Bukkit.getScheduler().runTask(plugin, () -> {
-            for (int py = 0; py < height; py++) {
-                for (int px = 0; px < width; px++) {
-                    int serverIdx = py * 64 + px;  // grille serveur = 64 colonnes
+            for (int dz = 0; dz < height; dz++) {
+                for (int dx = 0; dx < width; dx++) {
+                    int serverIdx = (offsetZ + dz) * GRID_SIZE + (offsetX + dx);
                     int colorId   = serverIdx < gridData.length() ? gridData.optInt(serverIdx, 0) : 0;
-                    grid[py * width + px] = (byte) colorId;
-                    world.getBlockAt(cornerX + px, cornerY, cornerZ + py)
+                    grid[dz * width + dx] = (byte) colorId;
+                    world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz)
                          .setType(COLOR_MATERIALS[colorId & 0x07], false);
                 }
             }
@@ -151,10 +166,32 @@ public class CanvasManager {
         return MATERIAL_TO_COLOR.getOrDefault(mat, -1);
     }
 
+    /** Définit le décalage de la fenêtre dans l'espace grille 0-2047 et sauvegarde. */
+    public void setOffset(int ox, int oz) {
+        offsetX = Math.max(0, Math.min(GRID_SIZE - width,  ox));
+        offsetZ = Math.max(0, Math.min(GRID_SIZE - height, oz));
+        var cfg = plugin.getConfig();
+        cfg.set("canvas.offsetX", offsetX);
+        cfg.set("canvas.offsetZ", offsetZ);
+        plugin.saveConfig();
+    }
+
+    /** Convertit des coords locales (dx,dz) en coordonnées mathématiques (-1024 à +1023). */
+    public int[] localToMath(int dx, int dz) {
+        return new int[]{ offsetX + dx - GRID_HALF, offsetZ + dz - GRID_HALF };
+    }
+
+    /** Convertit des coords locales (dx,dz) en coordonnées grille (0-2047). */
+    public int[] localToGrid(int dx, int dz) {
+        return new int[]{ offsetX + dx, offsetZ + dz };
+    }
+
     public boolean isConfigured() { return configured; }
     public int getWidth()         { return width; }
     public int getHeight()        { return height; }
     public int getCornerX()       { return cornerX; }
     public int getCornerY()       { return cornerY; }
     public int getCornerZ()       { return cornerZ; }
+    public int getOffsetX()       { return offsetX; }
+    public int getOffsetZ()       { return offsetZ; }
 }
