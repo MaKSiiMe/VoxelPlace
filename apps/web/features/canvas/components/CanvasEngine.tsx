@@ -15,7 +15,7 @@ export function CanvasEngine({ username }: Props) {
     <div
       ref={containerRef}
       className="fixed inset-0"
-      style={{ background: '#111111', touchAction: 'none' }}
+      style={{ background: '#ffffff', touchAction: 'none' }}
     />
   )
 }

@@ -33,7 +33,7 @@ interface CanvasStore {
 export const useCanvasStore = create<CanvasStore>()(
   subscribeWithSelector((set, get) => ({
     grid: null,
-    gridSize: 64,
+    gridSize: 2048,
     selectedColor: 1,
     hoveredPixel: null,
     colors: DEFAULT_COLORS,

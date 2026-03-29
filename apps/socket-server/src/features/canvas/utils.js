@@ -1,7 +1,7 @@
 // Fonctions utilitaires pures — testables indépendamment
 
 export function isValidCoord(v) {
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 63
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 2047
 }
 
 export function sanitizeUsername(raw) {

@@ -41,13 +41,22 @@ function gridToRGBA(grid: Uint8Array, size: number): Uint8Array {
   return rgba
 }
 
-function fitAndCenter(app: Application, sprite: Sprite, gridSize: number) {
-  const w     = app.renderer.width
-  const h     = app.renderer.height
-  const scale = Math.max(1, Math.min(Math.floor(w / gridSize), Math.floor(h / gridSize)))
-  sprite.scale.set(scale)
-  sprite.x = Math.round((w - gridSize * scale) / 2)
-  sprite.y = Math.round((h - gridSize * scale) / 2)
+const DEFAULT_SCALE  = 4   // 4px par pixel visible
+const GRID_HALF      = 1024 // GRID_SIZE / 2 → pixel (1024,1024) = math (0,0)
+
+// Système de coordonnées mathématique : +X droite, +Y haut
+// (0,0) math = pixel (1024,1024) dans le buffer = centre du viewport
+// Plage : -1024 à +1023 sur chaque axe
+function centerOnOrigin(app: Application, sprite: Sprite) {
+  sprite.scale.x =  DEFAULT_SCALE
+  sprite.scale.y = -DEFAULT_SCALE // Y négatif = +Y vers le haut
+  const cx = Math.round(app.renderer.width  / 2)
+  const cy = Math.round(app.renderer.height / 2)
+  // pixel (GRID_HALF, GRID_HALF) doit être à (cx, cy)
+  // screen_x = sprite.x + GRID_HALF * scale = cx
+  // screen_y = sprite.y - GRID_HALF * scale = cy  (scale.y est négatif)
+  sprite.x = cx - GRID_HALF * DEFAULT_SCALE
+  sprite.y = cy + GRID_HALF * DEFAULT_SCALE
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -80,7 +89,7 @@ export function usePixiCanvas(
       await app.init({
         width:           container.clientWidth,
         height:          container.clientHeight,
-        backgroundColor: 0x111111,
+        backgroundColor: 0xffffff,
         antialias:       false,
         resolution:      1,
         autoDensity:     false,
@@ -111,7 +120,7 @@ export function usePixiCanvas(
       gridSprite.eventMode = 'static'
       gridSprite.cursor    = 'crosshair'
       app.stage.addChild(gridSprite)
-      fitAndCenter(app, gridSprite, initSize)
+      centerOnOrigin(app, gridSprite)
 
       // ── Subscribe to grid changes (outside React render cycle) ──
       unsubGrid = useCanvasStore.subscribe(
@@ -150,7 +159,8 @@ export function usePixiCanvas(
         const gy    = Math.floor(local.y)
         const { gridSize, setHoveredPixel } = useCanvasStore.getState()
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          setHoveredPixel({ x: gx, y: gy })
+          // Convertit en coordonnées mathématiques : (0,0) = centre de la grille
+          setHoveredPixel({ x: gx - GRID_HALF, y: gy - GRID_HALF })
         } else {
           setHoveredPixel(null)
         }
@@ -185,18 +195,21 @@ export function usePixiCanvas(
       // ── Zoom (mouse wheel) ──
       const onWheel = (e: WheelEvent) => {
         e.preventDefault()
-        const MIN = 1, MAX = 64
-        const rect   = app.canvas.getBoundingClientRect()
-        const mouseX = e.clientX - rect.left
-        const mouseY = e.clientY - rect.top
-        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        const newScale = Math.max(MIN, Math.min(MAX, gridSprite.scale.x * factor))
-        const old      = gridSprite.scale.x
-        const worldX   = (mouseX - gridSprite.x) / old
-        const worldY   = (mouseY - gridSprite.y) / old
-        gridSprite.scale.set(newScale)
-        gridSprite.x = mouseX - worldX * newScale
-        gridSprite.y = mouseY - worldY * newScale
+        const MIN = 0.25, MAX = 64
+        const rect     = app.canvas.getBoundingClientRect()
+        const mouseX   = e.clientX - rect.left
+        const mouseY   = e.clientY - rect.top
+        const factor   = e.deltaY < 0 ? 1.15 : 1 / 1.15
+        const oldScale = gridSprite.scale.x // toujours positif
+        const newScale = Math.max(MIN, Math.min(MAX, oldScale * factor))
+        // Coordonnées locales du point sous la souris
+        // scale.y est négatif → ly = (sprite.y - mouseY) / oldScale
+        const lx = (mouseX - gridSprite.x) / oldScale
+        const ly = (gridSprite.y - mouseY) / oldScale
+        gridSprite.scale.x =  newScale
+        gridSprite.scale.y = -newScale // préserver le Y-flip
+        gridSprite.x = mouseX - lx * newScale
+        gridSprite.y = mouseY + ly * newScale
       }
       container.addEventListener('wheel', onWheel, { passive: false })
 

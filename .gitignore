@@ -27,6 +27,7 @@ npm-debug.log*
 # Divers
 .DS_Store
 *.pem
+scripts/
 
 # Outils de développement local
 .vscode/
