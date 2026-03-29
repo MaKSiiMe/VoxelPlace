@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.json.JSONArray;
 
 import java.util.HashMap;
@@ -126,8 +127,8 @@ public class CanvasManager {
     }
 
     /**
-     * Charge la fenêtre de la grille depuis le JSONArray renvoyé par grid:init.
-     * Seuls les width×height pixels correspondant à l'offset configuré sont dessinés.
+     * Charge la fenêtre de la grille depuis le JSONArray renvoyé par grid:init (socket).
+     * Le tableau contient toute la grille GRID_SIZE×GRID_SIZE — on extrait la fenêtre.
      */
     public void initGrid(JSONArray gridData) {
         if (!configured) return;
@@ -143,6 +144,40 @@ public class CanvasManager {
             }
             plugin.getLogger().info("[Canvas] " + (width * height) + " blocs dessinés.");
         });
+    }
+
+    /**
+     * Charge la fenêtre depuis le JSONArray renvoyé par /api/grid/window.
+     * Les blocs sont posés par lots (ROWS_PER_TICK lignes/tick) pour éviter le lag.
+     */
+    public void initGridWindow(JSONArray windowData) {
+        if (!configured) return;
+        final int ROWS_PER_TICK = 2; // ~width*2 blocs/tick, ajuster selon les perfs
+        final int[] currentRow  = {0};
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                int endRow = Math.min(currentRow[0] + ROWS_PER_TICK, height);
+                for (int dz = currentRow[0]; dz < endRow; dz++) {
+                    for (int dx = 0; dx < width; dx++) {
+                        int idx     = dz * width + dx;
+                        int colorId = idx < windowData.length() ? windowData.optInt(idx, 0) : 0;
+                        grid[idx]   = (byte) colorId;
+                        world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz)
+                             .setType(COLOR_MATERIALS[colorId & 0x07], false);
+                    }
+                }
+                currentRow[0] = endRow;
+
+                if (currentRow[0] >= height) {
+                    plugin.getLogger().info("[Canvas] " + (width * height) + " blocs dessinés.");
+                    cancel();
+                } else if (currentRow[0] % 128 == 0) {
+                    plugin.getLogger().info("[Canvas] " + currentRow[0] + "/" + height + " lignes...");
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     /** Retourne les coordonnées canvas {x, y} si le bloc est sur le canvas, sinon null */
@@ -164,6 +199,11 @@ public class CanvasManager {
     /** Retourne le colorId correspondant à un Material, ou -1 si hors palette */
     public int materialToColorId(Material mat) {
         return MATERIAL_TO_COLOR.getOrDefault(mat, -1);
+    }
+
+    /** Recharge la configuration depuis config.yml (appelé par /vp reload). */
+    public void reload() {
+        loadFromConfig();
     }
 
     /** Définit le décalage de la fenêtre dans l'espace grille 0-2047 et sauvegarde. */

@@ -119,6 +119,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
             .build());
         socketManager.disconnect();
         plugin.reloadConfig();
+        canvasManager.reload();
         socketManager.connect();
     }
 
