@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { GameFrame } from '@features/hud/components/GameFrame'
+import { BottomDrawer } from '@features/hud/components/BottomDrawer'
 import { StatusPills } from '@features/hud/components/StatusPills'
 import { CanvasEngine } from '@features/canvas/components/CanvasEngine'
 import { useSocket } from '@features/realtime/hooks/useSocket'
@@ -33,6 +34,7 @@ export default function GamePage() {
       <div className="fixed inset-0 z-10 pointer-events-none" style={{ left: 72 }}>
         <StatusPills />
       </div>
+      <BottomDrawer />
       <GameFrame />
     </main>
   )
