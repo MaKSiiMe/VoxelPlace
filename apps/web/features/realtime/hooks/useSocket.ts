@@ -5,7 +5,7 @@ import { socket } from '../socket'
 import { useCanvasStore } from '@features/canvas/store'
 
 export function useSocket(username: string) {
-  const { setGrid, setGridSize, setColors, setPlayers, updatePixel } = useCanvasStore()
+  const { setGrid, setGridSize, setPlayers, updatePixel } = useCanvasStore()
 
   useEffect(() => {
     if (!username) return
@@ -13,10 +13,10 @@ export function useSocket(username: string) {
     socket.connect()
     socket.emit('player:join', { username, source: 'web' })
 
-    socket.on('grid:init', ({ grid, size, colors, players }) => {
+    // colors ignoré — le client utilise sa propre palette (DEFAULT_COLORS dans store.ts)
+    socket.on('grid:init', ({ grid, size, players }) => {
       setGrid(new Uint8Array(grid))
       setGridSize(size)
-      if (colors) setColors(colors)
       if (players) setPlayers(players)
     })
 

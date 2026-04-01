@@ -2,11 +2,9 @@
 
 import { useState } from 'react'
 import { useCanvasStore } from '@features/canvas/store'
-import { cn } from '@shared/lib/utils'
+import { THIN, TASKBAR, BEZEL_COLOR, BORDER_COLOR } from '../theme'
 
-const THIN    = 12
-const TASKBAR = 64
-const GAP     = 8   // espace entre pill et cadre
+const GAP = 8
 
 export function BottomDrawer() {
   const [open, setOpen] = useState(false)
@@ -33,16 +31,14 @@ export function BottomDrawer() {
         alignItems:     'flex-end',
       }}
     >
-      {/*
-        Colonne centrée — pill + bridge + trigger.
-        La largeur naturelle de la pill dicte celle du trigger et du bridge.
-      */}
       <div className="flex flex-col items-center">
 
         {/* Pill */}
         <div
-          className="h-10 px-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 flex items-center gap-2"
+          className="h-10 px-3 rounded-full flex items-center gap-2"
           style={{
+            background:    BEZEL_COLOR,
+            border:        `1px solid ${BORDER_COLOR}`,
             transition:    'opacity 200ms ease, transform 200ms ease',
             opacity:       open ? 1 : 0,
             transform:     open ? 'translateY(0)' : 'translateY(6px)',
@@ -53,7 +49,7 @@ export function BottomDrawer() {
           {colors.map((hex, id) => (
             <button
               key={id}
-              onClick={() => setSelected(id)}
+              onClick={() => setSelected(selectedColor === id ? null : id)}
               title={`Couleur ${id}`}
               style={{
                 background:   hex,
@@ -74,7 +70,7 @@ export function BottomDrawer() {
           ))}
         </div>
 
-        {/* Bridge — comble le gap pill↔cadre, actif seulement quand ouvert */}
+        {/* Bridge */}
         <div
           style={{
             width:         '100%',
@@ -84,7 +80,7 @@ export function BottomDrawer() {
           {...handlers}
         />
 
-        {/* Trigger — largeur de la pill, hauteur du bord bas du cadre uniquement */}
+        {/* Trigger — seulement le bord bas du cadre */}
         <div
           style={{
             width:         '100%',
