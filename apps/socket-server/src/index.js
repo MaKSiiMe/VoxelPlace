@@ -17,7 +17,8 @@ const TEST_USERNAMES = new Set(
   (process.env.TEST_USERNAMES || '').split(',').map(s => s.trim()).filter(Boolean)
 )
 
-// --- Palette de couleurs (ID 0-7) ---
+// --- Palette canonique (source de vérité — jeu / DB / Minecraft plugin) ---
+// Les clients web appliquent leur propre mapping thème (dark/light mode)
 const COLORS = [
   '#FFFFFF', // 0 blanc
   '#000000', // 1 noir
@@ -201,7 +202,7 @@ fastify.get('/api/pixel/:x/:y', async (req, reply) => {
 
 // --- Rate limiting ---
 const lastPlaced = new Map()
-const COOLDOWN_MS = 1000
+const COOLDOWN_MS = 10000
 
 function checkRateLimit(username) {
   // Les comptes de test n'ont pas de cooldown

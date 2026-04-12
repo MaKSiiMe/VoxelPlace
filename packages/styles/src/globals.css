@@ -1,46 +1,44 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Couleurs Caelestia Light ─────────────────── */
-  --color-bg-light: #faf7f5;
-  --color-surface-light: #f0ebe6;
-  --color-border-light: rgba(0, 0, 0, 0.08);
-  --color-text-light: #1a1410;
-  --color-accent-rose: #e8a598;
-  --color-accent-brown: #8b6047;
+  /* ── Tokyo Night — UI ─────────────────────────── */
+  --color-bg:         #1a1b26;
+  --color-surface:    #24283b;
+  --color-border:     #414868;
+  --color-text:       #c0caf5;
+  --color-accent-blue:   #7aa2f7;
+  --color-accent-violet: #bb9af7;
+  --color-accent-green:  #9ece6a;
+  --color-accent-red:    #f7768e;
 
-  /* ── Couleurs Caelestia Dark ──────────────────── */
-  --color-bg-dark: #0a0a0f;
-  --color-surface-dark: #111118;
-  --color-border-dark: rgba(255, 255, 255, 0.08);
-  --color-text-dark: #e8e4f0;
-  --color-accent-blue: #3d6aff;
-  --color-accent-blue-light: #adc6ff;
+  /* ── Tokyo Night — Pixels ─────────────────────── */
+  --pixel-red:    #f7768e;
+  --pixel-blue:   #7aa2f7;
+  --pixel-yellow: #e0af68;
+  --pixel-green:  #9ece6a;
+  --pixel-orange: #ff9e64;
+  --pixel-violet: #bb9af7;
+  --pixel-white:  #c0caf5;
+  --pixel-black:  #15161e;
 
-  /* ── Hublot ───────────────────────────────────── */
-  --hublot-radius: 48px;
-  --hublot-margin: 24px;
-  --hublot-border: rgba(255, 255, 255, 0.10);
+  /* ── Bezel ────────────────────────────────────── */
+  --bezel-thin:    12px;
+  --bezel-taskbar: 64px;
+  --bezel-radius:  24px;
 }
 
-/* ── Glassmorphism ────────────────────────────────── */
-.glass {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+/* ── Reset — Niveau 0 ─────────────────────────────── */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #1a1b26;
+  color: #c0caf5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.glass-dark {
-  background: rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.glass-heavy {
-  background: rgba(255, 255, 255, 0.40);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.20);
+canvas {
+  display: block;
 }

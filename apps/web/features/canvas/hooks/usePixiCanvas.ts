@@ -8,17 +8,12 @@ import {
   Sprite,
   type FederatedPointerEvent,
 } from 'pixi.js'
-import { useCanvasStore } from '../store'
+import { useCanvasStore, DEFAULT_COLORS } from '../store'
 
-// ─── Palette RGBA (miroir de COLORS dans apps/socket-server/src/index.js) ────
-const HEX_COLORS = [
-  '#FFFFFF', '#000000', '#FF4444', '#00AA00',
-  '#4444FF', '#FFFF00', '#FF8800', '#AA00AA',
-]
-
+// ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
-  const buf = new Uint8Array(HEX_COLORS.length * 4)
-  HEX_COLORS.forEach((hex, i) => {
+  const buf = new Uint8Array(DEFAULT_COLORS.length * 4)
+  DEFAULT_COLORS.forEach((hex, i) => {
     buf[i * 4]     = parseInt(hex.slice(1, 3), 16)
     buf[i * 4 + 1] = parseInt(hex.slice(3, 5), 16)
     buf[i * 4 + 2] = parseInt(hex.slice(5, 7), 16)
@@ -41,20 +36,14 @@ function gridToRGBA(grid: Uint8Array, size: number): Uint8Array {
   return rgba
 }
 
-const DEFAULT_SCALE  = 4   // 4px par pixel visible
-const GRID_HALF      = 1024 // GRID_SIZE / 2 → pixel (1024,1024) = math (0,0)
+const DEFAULT_SCALE  = 4
+const GRID_HALF      = 1024
 
-// Système de coordonnées mathématique : +X droite, +Y haut
-// (0,0) math = pixel (1024,1024) dans le buffer = centre du viewport
-// Plage : -1024 à +1023 sur chaque axe
 function centerOnOrigin(app: Application, sprite: Sprite) {
   sprite.scale.x =  DEFAULT_SCALE
-  sprite.scale.y = -DEFAULT_SCALE // Y négatif = +Y vers le haut
+  sprite.scale.y = -DEFAULT_SCALE
   const cx = Math.round(app.renderer.width  / 2)
   const cy = Math.round(app.renderer.height / 2)
-  // pixel (GRID_HALF, GRID_HALF) doit être à (cx, cy)
-  // screen_x = sprite.x + GRID_HALF * scale = cx
-  // screen_y = sprite.y - GRID_HALF * scale = cy  (scale.y est négatif)
   sprite.x = cx - GRID_HALF * DEFAULT_SCALE
   sprite.y = cy + GRID_HALF * DEFAULT_SCALE
 }
@@ -72,7 +61,6 @@ export function usePixiCanvas(
     let destroyed    = false
     let initComplete = false
 
-    // Mutable pixi refs (not React state — no re-render needed)
     let app:          Application
     let bufferSource: BufferImageSource
     let gridSprite:   Sprite
@@ -89,7 +77,7 @@ export function usePixiCanvas(
       await app.init({
         width:           container.clientWidth,
         height:          container.clientHeight,
-        backgroundColor: 0xffffff,
+        backgroundColor: 0x1a1b26,
         antialias:       false,
         resolution:      1,
         autoDensity:     false,
@@ -102,7 +90,7 @@ export function usePixiCanvas(
       app.canvas.style.display        = 'block'
       container.appendChild(app.canvas)
 
-      // ── Texture from initial blank 64×64 grid ──
+      // ── Texture ──
       const initSize = useCanvasStore.getState().gridSize
       const initRGBA = new Uint8Array(initSize * initSize * 4).fill(255)
 
@@ -122,7 +110,20 @@ export function usePixiCanvas(
       app.stage.addChild(gridSprite)
       centerOnOrigin(app, gridSprite)
 
-      // ── Subscribe to grid changes (outside React render cycle) ──
+      // ── Grid overlay — manipulé directement en DOM via data-attribute ──
+      app.ticker.add(() => {
+        const scale = gridSprite.scale.x
+        useCanvasStore.getState().setPixelSize(scale)
+        const el = document.getElementById('canvas-grid-overlay')
+        if (!el) return
+        const opacity = Math.min(1, (scale - 4) / 4)
+        if (opacity <= 0) { el.style.opacity = '0'; return }
+        el.style.opacity       = String(opacity * 0.2)
+        el.style.backgroundSize     = `${scale}px ${scale}px`
+        el.style.backgroundPosition = `${gridSprite.x}px ${gridSprite.y}px`
+      })
+
+      // ── Subscribe to grid changes ──
       unsubGrid = useCanvasStore.subscribe(
         (s) => s.grid,
         (grid) => {
@@ -133,7 +134,6 @@ export function usePixiCanvas(
         },
       )
 
-      // Apply grid if already loaded (race condition on hot reload)
       const currentGrid = useCanvasStore.getState().grid
       if (currentGrid) {
         bufferSource.resource = gridToRGBA(currentGrid, initSize)
@@ -152,27 +152,43 @@ export function usePixiCanvas(
         }
       })
 
-      // ── Hover ──
+      // ── Hover → coordonnées grille + position écran pour le curseur ──
       gridSprite.on('pointermove', (e: FederatedPointerEvent) => {
         const local = e.getLocalPosition(gridSprite)
         const gx    = Math.floor(local.x)
         const gy    = Math.floor(local.y)
-        const { gridSize, setHoveredPixel } = useCanvasStore.getState()
+        const { gridSize, setHoveredPixel, setCursorScreenPos } = useCanvasStore.getState()
+
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          // Convertit en coordonnées mathématiques : (0,0) = centre de la grille
           setHoveredPixel({ x: gx - GRID_HALF, y: gy - GRID_HALF })
+          const scale   = gridSprite.scale.x
+          const screenX = gridSprite.x + gx * scale
+          const screenY = gridSprite.y - (gy + 1) * scale
+          setCursorScreenPos({ x: screenX, y: screenY })
         } else {
           setHoveredPixel(null)
+          setCursorScreenPos(null)
         }
       })
-      gridSprite.on('pointerleave', () => useCanvasStore.getState().setHoveredPixel(null))
 
-      // ── Pan (middle mouse + space+drag) ──
+      gridSprite.on('pointerleave', () => {
+        useCanvasStore.getState().setHoveredPixel(null)
+        useCanvasStore.getState().setCursorScreenPos(null)
+      })
+
+      // ── Pan (clic droit + espace+drag) + désélection mode Build ──
       app.stage.eventMode = 'static'
       app.stage.hitArea   = app.screen
 
       app.stage.on('pointerdown', (e: FederatedPointerEvent) => {
-        if (e.button !== 1 && !isSpaceDown) return
+        if (e.button === 2) {
+          const { selectedColor, setSelectedColor } = useCanvasStore.getState()
+          if (selectedColor !== null) {
+            setSelectedColor(null)
+            return
+          }
+        }
+        if (e.button !== 2 && !isSpaceDown) return
         isPanning   = true
         panStart    = { x: e.clientX, y: e.clientY }
         spriteStart = { x: gridSprite.x, y: gridSprite.y }
@@ -192,7 +208,7 @@ export function usePixiCanvas(
       app.stage.on('pointerup',        stopPan)
       app.stage.on('pointerupoutside', stopPan)
 
-      // ── Zoom (mouse wheel) ──
+      // ── Zoom ──
       const onWheel = (e: WheelEvent) => {
         e.preventDefault()
         const MIN = 0.25, MAX = 64
@@ -200,17 +216,18 @@ export function usePixiCanvas(
         const mouseX   = e.clientX - rect.left
         const mouseY   = e.clientY - rect.top
         const factor   = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        const oldScale = gridSprite.scale.x // toujours positif
+        const oldScale = gridSprite.scale.x
         const newScale = Math.max(MIN, Math.min(MAX, oldScale * factor))
-        // Coordonnées locales du point sous la souris
-        // scale.y est négatif → ly = (sprite.y - mouseY) / oldScale
         const lx = (mouseX - gridSprite.x) / oldScale
         const ly = (gridSprite.y - mouseY) / oldScale
         gridSprite.scale.x =  newScale
-        gridSprite.scale.y = -newScale // préserver le Y-flip
+        gridSprite.scale.y = -newScale
         gridSprite.x = mouseX - lx * newScale
         gridSprite.y = mouseY + ly * newScale
+        useCanvasStore.getState().setPixelSize(newScale)
       }
+      const onContextMenu = (e: MouseEvent) => e.preventDefault()
+      container.addEventListener('contextmenu', onContextMenu)
       container.addEventListener('wheel', onWheel, { passive: false })
 
       // ── Space key ──
@@ -236,8 +253,8 @@ export function usePixiCanvas(
       })
       resizeObs.observe(container)
 
-      // Store cleanup refs
       ;(container as HTMLDivElement & { _pixiCleanup?: () => void })._pixiCleanup = () => {
+        container.removeEventListener('contextmenu', onContextMenu)
         container.removeEventListener('wheel', onWheel)
         window.removeEventListener('keydown', onKeyDown)
         window.removeEventListener('keyup',   onKeyUp)

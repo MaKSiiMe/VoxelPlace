@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { GameFrame } from '@features/hud/components/GameFrame'
-import { StatusPills } from '@features/hud/components/StatusPills'
+import { GameFrame }    from '@features/hud/components/GameFrame'
+import { BottomDrawer } from '@features/hud/components/BottomDrawer'
+import { Notch }        from '@features/hud/components/Notch'
 import { CanvasEngine } from '@features/canvas/components/CanvasEngine'
-import { useSocket } from '@features/realtime/hooks/useSocket'
+import { useSocket }    from '@features/realtime/hooks/useSocket'
 
 function getOrCreateUsername(): string {
   let username = localStorage.getItem('voxelplace:username')
@@ -29,10 +30,8 @@ export default function GamePage() {
   return (
     <main className="w-screen h-screen overflow-hidden">
       <CanvasEngine username={username} />
-      {/* HUD — dans l'espace intérieur du cadre (left: 72px) */}
-      <div className="fixed inset-0 z-10 pointer-events-none" style={{ left: 72 }}>
-        <StatusPills />
-      </div>
+      <Notch />
+      <BottomDrawer />
       <GameFrame />
     </main>
   )
