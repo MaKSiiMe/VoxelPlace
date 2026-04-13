@@ -12,6 +12,7 @@ export function BottomDrawer() {
   const colors        = useCanvasStore((s) => s.colors)
   const selectedColor = useCanvasStore((s) => s.selectedColor)
   const setSelected   = useCanvasStore((s) => s.setSelectedColor)
+  const role          = useCanvasStore((s) => s.role)
 
   const handlers = {
     onMouseEnter: () => setOpen(true),
@@ -46,7 +47,11 @@ export function BottomDrawer() {
           }}
           {...handlers}
         >
-          {colors.map((hex, id) => (
+          {!role ? (
+            <span style={{ color: BORDER_COLOR, fontSize: 12, padding: '0 8px' }}>
+              Connectez-vous pour poser des pixels
+            </span>
+          ) : colors.map((hex, id) => (
             <button
               key={id}
               onClick={() => setSelected(selectedColor === id ? null : id)}
@@ -69,6 +74,7 @@ export function BottomDrawer() {
             />
           ))}
         </div>
+
 
         {/* Bridge */}
         <div

@@ -6,7 +6,21 @@ import Redis from 'ioredis'
 import { loadGrid, setPixel, getPixelMeta, GRID_SIZE } from './features/canvas/grid.js'
 import { isValidCoord, sanitizeUsername, validatePixel } from './features/canvas/utils.js'
 import { authRoutes } from './features/auth/routes.js'
+import { playerRoutes } from './features/players/routes.js'
+import { timelapseRoutes } from './features/timelapse/routes.js'
+import { zoneRoutes } from './features/zone/routes.js'
+import { shareRoutes } from './features/share/routes.js'
+import { adminRoutes } from './features/admin/routes.js'
+import { globalDashboardRoutes } from './features/dashboard/global.js'
+import { playerDashboardRoutes } from './features/dashboard/player.js'
 import { pool, connectWithRetry } from './shared/db.js'
+import { PALETTE_HEX as COLORS } from './shared/palette.js'
+import { registerChatEvents } from './features/chat/events.js'
+import { initPixelChatTable, registerPixelChatEvents, resetPixelThread } from './features/chat/pixelChat.js'
+import { initUnlockTables, processPixelPlaced, processPixelLost, processPixelOverwritten, checkFeatureUnlocks } from './features/unlocks/engine.js'
+import { unlockRoutes } from './features/unlocks/routes.js'
+import { reportRoutes } from './features/report/routes.js'
+import { profileRoutes } from './features/profile/routes.js'
 
 const PORT       = parseInt(process.env.PORT || '3001', 10)
 const REDIS_URL  = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
@@ -17,19 +31,6 @@ const TEST_USERNAMES = new Set(
   (process.env.TEST_USERNAMES || '').split(',').map(s => s.trim()).filter(Boolean)
 )
 
-// --- Palette canonique (source de vérité — jeu / DB / Minecraft plugin) ---
-// Les clients web appliquent leur propre mapping thème (dark/light mode)
-const COLORS = [
-  '#FFFFFF', // 0 blanc
-  '#000000', // 1 noir
-  '#FF4444', // 2 rouge
-  '#00AA00', // 3 vert
-  '#4444FF', // 4 bleu
-  '#FFFF00', // 5 jaune
-  '#FF8800', // 6 orange
-  '#AA00AA', // 7 violet
-]
-
 // --- Redis ---
 const redis = new Redis(REDIS_URL)
 redis.on('connect', () => console.log(`[Redis] Connecté à ${REDIS_URL}`))
@@ -39,8 +40,12 @@ redis.on('error',   (err) => console.error('[Redis] Erreur :', err.message))
 const fastify = Fastify({ logger: false })
 await fastify.register(cors, { origin: '*', methods: ['GET', 'POST'] })
 
-// --- Auth routes (PostgreSQL) ---
+// --- Routes REST (features) ---
 await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
+await playerRoutes(fastify, { pool })
+await timelapseRoutes(fastify, { pool })
+await zoneRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
+await shareRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 
 // --- Socket.io ---
 const io = new Server(fastify.server, {
@@ -50,6 +55,8 @@ const io = new Server(fastify.server, {
 // --- Joueurs connectés ---
 // socketId → { username, source }
 const connectedPlayers = new Map()
+// username → socketId (pour les notifications ciblées)
+const usernameToSocket = new Map()
 
 function getPlayersPayload() {
   const byPlatform = {}
@@ -107,11 +114,31 @@ fastify.get('/api/stats', async (_req, reply) => {
 })
 
 // Heatmap : nombre de pixels posés par coordonnée
-fastify.get('/api/heatmap', async (_req, reply) => {
+// GET /api/heatmap?since=24h&username=Steve
+// since : 1h | 24h | 7d | 30d | all (défaut: all)
+fastify.get('/api/heatmap', async (req, reply) => {
+  const { since, username } = req.query
+
+  const conditions = []
+  const params     = []
+
+  if (username) {
+    params.push(username)
+    conditions.push(`LOWER(username) = LOWER($${params.length})`)
+  }
+
+  const intervals = { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }
+  if (since && intervals[since]) {
+    conditions.push(`placed_at > NOW() - INTERVAL '${intervals[since]}'`)
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
   const result = await pool.query(
-    'SELECT x, y, COUNT(*)::int AS count FROM pixel_history GROUP BY x, y'
+    `SELECT x, y, COUNT(*)::int AS count FROM pixel_history ${where} GROUP BY x, y ORDER BY count DESC`,
+    params
   )
-  reply.send({ heatmap: result.rows })
+  reply.send({ heatmap: result.rows, filters: { since: since ?? 'all', username: username ?? null } })
 })
 
 // Pulse : pixels par minute sur les 3 dernières heures
@@ -198,29 +225,77 @@ fastify.get('/api/pixel/:x/:y', async (req, reply) => {
   reply.send(meta || { x, y, colorId: 0, username: null, source: null })
 })
 
-// --- Helpers de validation (voir src/utils.js) ---
+// --- Rate limiting par rôle ---
 
-// --- Rate limiting ---
 const lastPlaced = new Map()
-const COOLDOWN_MS = 10000
 
-function checkRateLimit(username) {
-  // Les comptes de test n'ont pas de cooldown
-  if (TEST_USERNAMES.has(username)) return 0
+// Cooldown en ms par rôle
+const ROLE_COOLDOWNS = {
+  user:       60_000,   // 1 minute
+  superuser:   1_000,   // 1 seconde
+  admin:       5_000,   // 5 secondes
+  superadmin:      0,   // aucun cooldown
+}
+
+// Réduction streak pour les users normaux : 0h=60s | 5h=45s | 10h=30s | 20h=20s
+function cooldownForStreak(streakHours) {
+  if (streakHours >= 20) return 20_000
+  if (streakHours >= 10) return 30_000
+  if (streakHours >= 5)  return 45_000
+  return ROLE_COOLDOWNS.user
+}
+
+// Cache role + streak_hours en mémoire (TTL 2 min)
+const userCache     = new Map()
+const USER_TTL_MS   = 2 * 60 * 1000
+
+async function getUserCached(username) {
+  const cached = userCache.get(username.toLowerCase())
+  if (cached && Date.now() - cached.fetchedAt < USER_TTL_MS) return cached.data
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT role, streak_hours FROM users WHERE LOWER(username) = LOWER($1)',
+      [username]
+    )
+    const data = { role: rows[0]?.role ?? 'user', streak: rows[0]?.streak_hours ?? 0 }
+    userCache.set(username.toLowerCase(), { data, fetchedAt: Date.now() })
+    return data
+  } catch {
+    return { role: 'user', streak: 0 }
+  }
+}
+
+// Retourne le cooldown actif en ms (0 = peut placer)
+async function checkRateLimit(username) {
+  if (TEST_USERNAMES.has(username)) return { wait: 0, cooldownMs: 0 }
+
+  const { role, streak } = await getUserCached(username)
+
+  let cooldownMs = ROLE_COOLDOWNS[role] ?? ROLE_COOLDOWNS.user
+  // Les users normaux bénéficient de la réduction par streak
+  if (role === 'user') cooldownMs = cooldownForStreak(streak)
+  // superadmin : aucun cooldown
+  if (cooldownMs === 0) return { wait: 0, cooldownMs: 0 }
 
   const now  = Date.now()
   const last = lastPlaced.get(username) ?? 0
-  if (now - last < COOLDOWN_MS) {
-    return Math.ceil((COOLDOWN_MS - (now - last)) / 1000)
+  const elapsed = now - last
+  if (elapsed < cooldownMs) {
+    return { wait: cooldownMs - elapsed, cooldownMs }
   }
   lastPlaced.set(username, now)
-  return 0
+  return { wait: 0, cooldownMs }
 }
 
 setInterval(() => {
-  const cutoff = Date.now() - COOLDOWN_MS * 2
+  const placedCutoff = Date.now() - 120_000
   for (const [user, ts] of lastPlaced) {
-    if (ts < cutoff) lastPlaced.delete(user)
+    if (ts < placedCutoff) lastPlaced.delete(user)
+  }
+  const cacheCutoff = Date.now() - USER_TTL_MS
+  for (const [user, entry] of userCache) {
+    if (entry.fetchedAt < cacheCutoff) userCache.delete(user)
   }
 }, 60_000)
 
@@ -244,10 +319,9 @@ io.on('connection', async (socket) => {
     const cleanSource = ['web', 'minecraft', 'roblox', 'hytale'].includes(source)
       ? source
       : 'web'
-    connectedPlayers.set(socket.id, {
-      username: sanitizeUsername(username),
-      source:   cleanSource,
-    })
+    const cleanUsername = sanitizeUsername(username)
+    connectedPlayers.set(socket.id, { username: cleanUsername, source: cleanSource })
+    usernameToSocket.set(cleanUsername.toLowerCase(), socket.id)
     broadcastPlayers()
   })
 
@@ -304,10 +378,21 @@ io.on('connection', async (socket) => {
     const pixel = validatePixel(data)
     if (!pixel) return ack?.({ error: 'Données invalides' })
 
-    const wait = checkRateLimit(pixel.username)
-    if (wait > 0) return ack?.({ error: `Trop vite ! Attends ${wait}s.`, cooldown: wait })
+    const { wait, cooldownMs } = await checkRateLimit(pixel.username)
+    if (wait > 0) return ack?.({ error: `Trop vite ! Attends ${Math.ceil(wait / 1000)}s.`, cooldown: wait })
+
+    // Vérifie si le joueur est banni
+    const ban = await pool.query(
+      `SELECT expires_at FROM bans WHERE LOWER(username) = LOWER($1)
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+      [pixel.username]
+    )
+    if (ban.rows.length > 0) return ack?.({ error: 'Vous êtes banni.' })
 
     try {
+      // Récupère le propriétaire actuel avant d'écraser
+      const prevMeta = await getPixelMeta(redis, pixel.x, pixel.y)
+
       await setPixel(redis, pixel)
       await redis.hincrby(STATS_KEY, pixel.source, 1)
       await redis.hincrby(STATS_KEY, 'total', 1)
@@ -318,23 +403,83 @@ io.on('connection', async (socket) => {
       ).catch(err => console.error('[pixel_history]', err.message))
       io.emit('pixel:update', pixel)
       io.emit('stats:update', await getStats())
-      ack?.({ ok: true, exempt: TEST_USERNAMES.has(pixel.username) })
+
+      // Reset le thread pixel:chat si le pixel change de propriétaire
+      if (prevMeta?.username?.toLowerCase() !== pixel.username.toLowerCase()) {
+        resetPixelThread(io, pool, pixel.x, pixel.y).catch(err => console.error('[pixel:chat:reset]', err.message))
+      }
+
+      // Unlocks — traitement async fire-and-forget
+      if (pixel.username) {
+        processPixelPlaced(pool, pixel.username, pixel.colorId, pixel.x, pixel.y)
+          .then(() => checkFeatureUnlocks(pool, pixel.username))
+          .then(newUnlocks => {
+            if (newUnlocks.length > 0) {
+              const socketId = usernameToSocket.get(pixel.username.toLowerCase())
+              if (socketId) io.to(socketId).emit('unlocks:new', { unlocks: newUnlocks })
+            }
+          })
+          .catch(err => console.error('[unlocks]', err.message))
+
+        if (prevMeta?.username && prevMeta.username.toLowerCase() !== pixel.username.toLowerCase()) {
+          processPixelLost(pool, prevMeta.username).catch(() => {})
+          processPixelOverwritten(pool, pixel.username).catch(() => {})
+          // Invalide le cache streak du joueur
+          userCache.delete(pixel.username.toLowerCase())
+        }
+      }
+
+      // Notification si un joueur connecté s'est fait écraser son pixel
+      if (
+        prevMeta?.username &&
+        prevMeta.username.toLowerCase() !== pixel.username.toLowerCase()
+      ) {
+        const targetSocketId = usernameToSocket.get(prevMeta.username.toLowerCase())
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('pixel:overwritten', {
+            x:         pixel.x,
+            y:         pixel.y,
+            colorId:   pixel.colorId,
+            by:        pixel.username,
+            source:    pixel.source,
+          })
+        }
+      }
+
+      const { role, streak: streakHours } = await getUserCached(pixel.username)
+      ack?.({ ok: true, role, streak_hours: streakHours, cooldown: cooldownMs })
     } catch (err) {
       console.error('[pixel:place]', err)
       ack?.({ error: 'Erreur serveur' })
     }
   })
 
+  // Chat global / zone
+  registerChatEvents(io, socket, connectedPlayers)
+  // Chat par pixel
+  registerPixelChatEvents(io, socket, connectedPlayers, pool, usernameToSocket)
+
   socket.on('disconnect', () => {
     console.log(`[Socket] Déconnecté : ${socket.id}`)
+    const player = connectedPlayers.get(socket.id)
+    if (player) usernameToSocket.delete(player.username.toLowerCase())
     connectedPlayers.delete(socket.id)
     broadcastPlayers()
   })
 })
 
+await adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE })
+await unlockRoutes(fastify, { pool, JWT_SECRET })
+await reportRoutes(fastify, { pool, JWT_SECRET })
+await profileRoutes(fastify, { pool })
+await globalDashboardRoutes(fastify, { pool })
+await playerDashboardRoutes(fastify, { pool, gridSize: GRID_SIZE })
+
 // --- Démarrage ---
 try {
   await connectWithRetry()
+  await initPixelChatTable(pool)
+  await initUnlockTables(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
   console.log(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
   if (TEST_USERNAMES.size > 0) {

@@ -5,6 +5,9 @@ import { HUD_SHADOW, THIN, TASKBAR, RADIUS, BORDER_COLOR, ACCENT_RED, ACCENT_GRE
 import { NOTCH_W, NOTCH_H, NOTCH_R } from './Notch'
 import { useCanvasStore } from '@features/canvas/store'
 
+const ACCENT_BLUE   = '#7aa2f7'
+const ACCENT_YELLOW = '#e0af68'
+
 function hexToRgb(hex: string) {
   return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]
 }
@@ -61,6 +64,12 @@ export function GameFrame() {
   const [borderColor, setBorderColor] = useState(BORDER_COLOR)
   const [glowBlur, setGlowBlur] = useState(2)
   const rafRef = useRef<number>(0)
+
+  const role          = useCanvasStore((s) => s.role)
+  const isEditMode    = useCanvasStore((s) => s.isEditMode)
+  const setIsEditMode = useCanvasStore((s) => s.setIsEditMode)
+  const setSelected   = useCanvasStore((s) => s.setSelectedColor)
+  const isAdmin       = role === 'admin'  || role === 'superadmin'
 
   useEffect(() => {
     const update = () => setVp({ w: window.innerWidth, h: window.innerHeight })
@@ -156,6 +165,39 @@ export function GameFrame() {
         </div>
 
         <div className="flex flex-col items-center gap-3 mb-4">
+          {/* Bouton Edit / Spec — visible uniquement pour les admins */}
+          {isAdmin && (
+            <button
+              onClick={() => {
+                const next = !isEditMode
+                setIsEditMode(next)
+                if (!next) setSelected(null)
+              }}
+              title={isEditMode ? 'Passer en mode Spec' : 'Passer en mode Edit'}
+              className="flex items-center justify-center rounded-lg"
+              style={{
+                width:      36,
+                height:     36,
+                background: isEditMode ? `${ACCENT_BLUE}22` : `${ACCENT_YELLOW}22`,
+                border:     `1px solid ${isEditMode ? ACCENT_BLUE : ACCENT_YELLOW}`,
+                color:      isEditMode ? ACCENT_BLUE : ACCENT_YELLOW,
+                transition: 'background 150ms, border-color 150ms, color 150ms',
+              }}
+            >
+              {isEditMode ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              )}
+            </button>
+          )}
+
           <button
             className="flex items-center justify-center rounded-lg transition-colors"
             style={{ width: 36, height: 36, color: BORDER_COLOR, background: 'transparent' }}

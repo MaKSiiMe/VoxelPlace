@@ -15,7 +15,7 @@ export function sanitizeUsername(raw) {
 export function validatePixel(data) {
   const { x, y, colorId, username, source } = data || {}
   if (!isValidCoord(x) || !isValidCoord(y)) return null
-  if (typeof colorId !== 'number' || !Number.isInteger(colorId) || colorId < 0 || colorId > 7) return null
+  if (typeof colorId !== 'number' || !Number.isInteger(colorId) || colorId < 0 || colorId > 15) return null
   if (typeof username !== 'string') return null
   const cleanUsername = sanitizeUsername(username)
   if (cleanUsername.length === 0) return null

@@ -1,18 +1,18 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { isValidCoord, sanitizeUsername, validatePixel } from '../src/utils.js'
+import { isValidCoord, sanitizeUsername, validatePixel } from '../src/features/canvas/utils.js'
 
 describe('isValidCoord', () => {
-  test('accepte les bornes valides 0 et 63', () => {
+  test('accepte les bornes valides 0 et 2047', () => {
     assert.equal(isValidCoord(0), true)
-    assert.equal(isValidCoord(63), true)
-    assert.equal(isValidCoord(32), true)
+    assert.equal(isValidCoord(2047), true)
+    assert.equal(isValidCoord(512), true)
   })
 
   test('rejette les coordonnées hors-limites', () => {
     assert.equal(isValidCoord(-1), false)
-    assert.equal(isValidCoord(64), false)
-    assert.equal(isValidCoord(100), false)
+    assert.equal(isValidCoord(2048), false)
+    assert.equal(isValidCoord(9999), false)
   })
 
   test('rejette les non-entiers et non-nombres', () => {
@@ -60,19 +60,23 @@ describe('validatePixel', () => {
 
   test('rejette des coordonnées X invalides', () => {
     assert.equal(validatePixel({ ...valid, x: -1 }), null)
-    assert.equal(validatePixel({ ...valid, x: 64 }), null)
+    assert.equal(validatePixel({ ...valid, x: 2048 }), null)
     assert.equal(validatePixel({ ...valid, x: 1.5 }), null)
   })
 
   test('rejette des coordonnées Y invalides', () => {
     assert.equal(validatePixel({ ...valid, y: -1 }), null)
-    assert.equal(validatePixel({ ...valid, y: 64 }), null)
+    assert.equal(validatePixel({ ...valid, y: 2048 }), null)
   })
 
-  test('rejette un colorId hors palette (0-7)', () => {
-    assert.equal(validatePixel({ ...valid, colorId: 8 }), null)
+  test('rejette un colorId hors palette (0-15)', () => {
+    assert.equal(validatePixel({ ...valid, colorId: 16 }), null)
     assert.equal(validatePixel({ ...valid, colorId: -1 }), null)
     assert.equal(validatePixel({ ...valid, colorId: 1.5 }), null)
+  })
+
+  test('accepte colorId 15 (rose — dernière couleur)', () => {
+    assert.ok(validatePixel({ ...valid, colorId: 15 }))
   })
 
   test('rejette un username vide après sanitisation', () => {

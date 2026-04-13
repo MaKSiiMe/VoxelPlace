@@ -5,7 +5,28 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/socket-server/package.json
+
+      - name: Install dependencies
+        working-directory: apps/socket-server
+        run: npm install
+
+      - name: Run backend tests
+        working-directory: apps/socket-server
+        run: npm test
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:

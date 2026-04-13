@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { hashPassword, verifyPassword, signToken, verifyToken } from '../src/auth.js'
+import { hashPassword, verifyPassword, signToken, verifyToken } from '../src/features/auth/routes.js'
 
 describe('hashPassword', () => {
   it('génère un hash différent du mot de passe original', async () => {

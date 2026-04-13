@@ -27,7 +27,7 @@ const PALETTE_RGBA: Uint8Array = (() => {
 function gridToRGBA(grid: Uint8Array, size: number): Uint8Array {
   const rgba = new Uint8Array(size * size * 4)
   for (let i = 0; i < size * size; i++) {
-    const id = (grid[i] ?? 0) & 0x07
+    const id = (grid[i] ?? 0) & 0x0F
     rgba[i * 4]     = PALETTE_RGBA[id * 4]
     rgba[i * 4 + 1] = PALETTE_RGBA[id * 4 + 1]
     rgba[i * 4 + 2] = PALETTE_RGBA[id * 4 + 2]

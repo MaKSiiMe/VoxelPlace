@@ -1,14 +1,14 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { getPixelIndex, GRID_SIZE } from '../src/grid.js'
+import { getPixelIndex, GRID_SIZE } from '../src/features/canvas/grid.js'
 
 describe('GRID_SIZE', () => {
-  test('vaut 64', () => {
-    assert.equal(GRID_SIZE, 64)
+  test('vaut 2048', () => {
+    assert.equal(GRID_SIZE, 2048)
   })
 
-  test('la grille contient 4096 pixels (64×64)', () => {
-    assert.equal(GRID_SIZE * GRID_SIZE, 4096)
+  test('la grille contient 4 194 304 pixels (2048×2048)', () => {
+    assert.equal(GRID_SIZE * GRID_SIZE, 4_194_304)
   })
 })
 
@@ -17,20 +17,20 @@ describe('getPixelIndex', () => {
     assert.equal(getPixelIndex(0, 0), 0)
   })
 
-  test('coin haut-droit (63,0) = index 63', () => {
-    assert.equal(getPixelIndex(63, 0), 63)
+  test('coin haut-droit (2047,0) = index 2047', () => {
+    assert.equal(getPixelIndex(2047, 0), 2047)
   })
 
-  test('début de la 2e ligne (0,1) = index 64', () => {
+  test('début de la 2e ligne (0,1) = index 2048', () => {
     assert.equal(getPixelIndex(0, 1), GRID_SIZE)
   })
 
-  test('milieu de la 2e ligne (5,1) = index 69', () => {
+  test('milieu de la 2e ligne (5,1) = index 2053', () => {
     assert.equal(getPixelIndex(5, 1), GRID_SIZE + 5)
   })
 
-  test('coin bas-droit (63,63) = dernier index (4095)', () => {
-    assert.equal(getPixelIndex(63, 63), GRID_SIZE * GRID_SIZE - 1)
+  test('coin bas-droit (2047,2047) = dernier index (4194303)', () => {
+    assert.equal(getPixelIndex(2047, 2047), GRID_SIZE * GRID_SIZE - 1)
   })
 
   test('formule : y * GRID_SIZE + x', () => {

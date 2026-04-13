@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { unlockBaseNodes } from '../unlocks/engine.js'
 
 const SALT_ROUNDS = 10
 
@@ -46,14 +47,16 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
 
     try {
       const passwordHash = await hashPassword(password)
-      // Requête préparée — protège contre les injections SQL
+      // Les pseudos hbtn_* sont automatiquement superuser (beta testeurs)
+      const role = clean.toLowerCase().startsWith('hbtn_') ? 'superuser' : 'user'
       const result = await pool.query(
-        'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username, created_at',
-        [clean, passwordHash]
+        'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
+        [clean, passwordHash, role]
       )
       const user = result.rows[0]
-      const token = signToken({ id: user.id, username: user.username }, jwtSecret)
-      reply.status(201).send({ token, username: user.username })
+      await unlockBaseNodes(pool, user.username)
+      const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
+      reply.status(201).send({ token, username: user.username, role: user.role })
     } catch (err) {
       // Code 23505 = violation de contrainte UNIQUE (username déjà pris)
       if (err.code === '23505') {
@@ -74,7 +77,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
     try {
       // Requête préparée — insensible à la casse sur le username
       const result = await pool.query(
-        'SELECT id, username, password_hash FROM users WHERE LOWER(username) = LOWER($1)',
+        'SELECT id, username, role, password_hash FROM users WHERE LOWER(username) = LOWER($1)',
         [username.trim()]
       )
       const user = result.rows[0]
@@ -85,10 +88,69 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
       if (!valid) {
         return reply.status(401).send({ error: 'Identifiants incorrects' })
       }
-      const token = signToken({ id: user.id, username: user.username }, jwtSecret)
-      reply.send({ token, username: user.username })
+
+      // Promotion automatique hbtn_* → superuser (si créé avant la règle)
+      if (user.username.toLowerCase().startsWith('hbtn_') && user.role === 'user') {
+        await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['superuser', user.id])
+        user.role = 'superuser'
+      }
+
+      const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
+      reply.send({ token, username: user.username, role: user.role })
     } catch (err) {
       console.error('[auth:login]', err)
+      reply.status(500).send({ error: 'Erreur serveur' })
+    }
+  })
+
+  // DELETE /api/auth/account — droit à l'effacement (RGPD)
+  // Supprime le compte et toutes les données personnelles du joueur.
+  // Le mot de passe est requis pour confirmer l'intention.
+  fastify.delete('/api/auth/account', async (req, reply) => {
+    const auth = req.headers['authorization']
+    if (!auth?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'Token requis' })
+    }
+
+    const payload = verifyToken(auth.slice(7), jwtSecret)
+    if (!payload) {
+      return reply.status(401).send({ error: 'Token invalide' })
+    }
+
+    const { password } = req.body || {}
+    if (!password) {
+      return reply.status(400).send({ error: 'Mot de passe requis pour confirmer la suppression' })
+    }
+
+    try {
+      const result = await pool.query(
+        'SELECT id, username, password_hash FROM users WHERE id = $1',
+        [payload.id]
+      )
+      const user = result.rows[0]
+      if (!user) {
+        return reply.status(404).send({ error: 'Compte introuvable' })
+      }
+
+      const valid = await verifyPassword(password, user.password_hash)
+      if (!valid) {
+        return reply.status(401).send({ error: 'Mot de passe incorrect' })
+      }
+
+      // Suppression en cascade de toutes les données personnelles
+      await pool.query('DELETE FROM user_unlocks    WHERE LOWER(username) = LOWER($1)', [user.username])
+      await pool.query('DELETE FROM user_stats      WHERE LOWER(username) = LOWER($1)', [user.username])
+      await pool.query('DELETE FROM user_color_counts WHERE LOWER(username) = LOWER($1)', [user.username])
+      await pool.query('DELETE FROM pixel_messages  WHERE LOWER(username) = LOWER($1)', [user.username])
+      await pool.query('DELETE FROM reports         WHERE LOWER(reporter)  = LOWER($1)', [user.username])
+      await pool.query('DELETE FROM users           WHERE id = $1', [payload.id])
+
+      // Note : pixel_history est conservé (données anonymisées — intérêt légitime gameplay)
+      // Les pixels posés restent sur le canvas mais sans lien au compte supprimé.
+
+      reply.send({ ok: true, message: 'Compte et données personnelles supprimés' })
+    } catch (err) {
+      console.error('[auth:delete-account]', err)
       reply.status(500).send({ error: 'Erreur serveur' })
     }
   })
