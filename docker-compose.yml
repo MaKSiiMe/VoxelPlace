@@ -29,7 +29,7 @@ services:
       - "3001:3001"
     environment:
       PORT:            "3001"
-      REDIS_URL:       "redis://100.124.153.20:6379"
+      REDIS_URL:       "redis://voxelplace-redis:6379"
       DATABASE_URL:    "postgresql://voxelplace:${POSTGRES_PASSWORD}@voxelplace-db:5432/voxelplace"
       ADMIN_PASSWORD:  "${ADMIN_PASSWORD}"
       JWT_SECRET:      "${JWT_SECRET}"
@@ -52,5 +52,16 @@ services:
     depends_on:
       - voxelplace-api
 
+  voxelplace-redis:
+    image: redis:latest
+    container_name: voxelplace-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --appendonly yes
+
 volumes:
   postgres_data:
+  redis_data:
