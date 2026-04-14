@@ -16,8 +16,29 @@ function getToken() {
 }
 
 export function AdminDashboard() {
-  const [promoteResult, setPromoteResult] = useState<string | null>(null)
+  const [promoteResult,  setPromoteResult]  = useState<string | null>(null)
   const [promoteLoading, setPromoteLoading] = useState(false)
+  const [restoreResult,  setRestoreResult]  = useState<string | null>(null)
+  const [restoreLoading, setRestoreLoading] = useState(false)
+
+  async function handleRestoreCanvas() {
+    if (!confirm('Restaurer le canvas depuis PostgreSQL ? Les pixels Redis seront remplacés.')) return
+    setRestoreLoading(true)
+    setRestoreResult(null)
+    try {
+      const res = await fetch(`${API}/api/admin/restore-canvas`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erreur serveur')
+      setRestoreResult(`✅ ${data.restored} pixels restaurés depuis PostgreSQL`)
+    } catch (err: unknown) {
+      setRestoreResult(`❌ ${err instanceof Error ? err.message : 'Erreur inconnue'}`)
+    } finally {
+      setRestoreLoading(false)
+    }
+  }
 
   async function handlePromoteHbtn() {
     setPromoteLoading(true)
@@ -85,6 +106,32 @@ export function AdminDashboard() {
         >
           ← Retour au canvas
         </a>
+      </div>
+
+      {/* Section — Canvas */}
+      <div style={cardStyle}>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <span style={{ color:'#c0caf5', fontWeight:700, fontSize:15 }}>Canvas Redis</span>
+          <span style={{ color:BORDER_COLOR, fontSize:13 }}>
+            Si le canvas est vide ou corrompu, reconstruit l'état depuis <code style={{ color:ACCENT_BLUE }}>pixel_history</code> (PostgreSQL).
+          </span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+          <button
+            style={btnStyle(ACCENT_RED, restoreLoading)}
+            disabled={restoreLoading}
+            onClick={handleRestoreCanvas}
+            onMouseEnter={e => { if (!restoreLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_RED}44` }}
+            onMouseLeave={e => { if (!restoreLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_RED}22` }}
+          >
+            {restoreLoading ? 'Restauration…' : '🔄 Restaurer le canvas depuis PostgreSQL'}
+          </button>
+          {restoreResult && (
+            <span style={{ color: restoreResult.startsWith('✅') ? ACCENT_GREEN : ACCENT_RED, fontSize:13, fontFamily:'monospace' }}>
+              {restoreResult}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Section — Gestion des rôles */}

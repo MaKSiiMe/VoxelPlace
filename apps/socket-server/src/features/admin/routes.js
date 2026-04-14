@@ -225,6 +225,33 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     reply.send({ ok: true, cleared: total })
   })
 
+  // Restaure le canvas Redis depuis pixel_history PostgreSQL
+  // POST /api/admin/restore-canvas  (superadmin uniquement)
+  fastify.post('/api/admin/restore-canvas', async (req, reply) => {
+    if (!requireAdmin(req, reply, true)) return
+
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (x, y) x, y, color_id AS "colorId", username, source, placed_at AS "placedAt"
+      FROM pixel_history
+      ORDER BY x, y, placed_at DESC
+    `)
+
+    const pipe = redis.pipeline()
+    for (const row of rows) {
+      const { x, y, colorId, username, source, placedAt } = row
+      if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue
+      await redis.setrange('voxelplace:grid', y * GRID_SIZE + x, Buffer.from([colorId & 0x0F]))
+      pipe.hset('voxelplace:pixels', `${x},${y}`, JSON.stringify({ x, y, colorId, username, source, updatedAt: new Date(placedAt).getTime() }))
+    }
+    await pipe.exec()
+
+    // Notifie tous les clients de recharger le canvas
+    io.emit('canvas:reload')
+
+    console.log(`[Admin] Canvas restauré depuis PostgreSQL — ${rows.length} pixels`)
+    reply.send({ ok: true, restored: rows.length })
+  })
+
   // Bannir un joueur
   // POST /api/admin/ban/:username
   // Body : { reason?, expires_in_days? }
