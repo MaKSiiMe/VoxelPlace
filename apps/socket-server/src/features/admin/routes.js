@@ -236,13 +236,16 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
       ORDER BY x, y, placed_at DESC
     `)
 
+    // Construit le buffer complet (même approche que restore-canvas.js)
+    const grid = Buffer.alloc(GRID_SIZE * GRID_SIZE, 0)
     const pipe = redis.pipeline()
     for (const row of rows) {
       const { x, y, colorId, username, source, placedAt } = row
       if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue
-      await redis.setrange('voxelplace:grid', y * GRID_SIZE + x, Buffer.from([colorId & 0x0F]))
+      grid[y * GRID_SIZE + x] = colorId & 0x0F
       pipe.hset('voxelplace:pixels', `${x},${y}`, JSON.stringify({ x, y, colorId, username, source, updatedAt: new Date(placedAt).getTime() }))
     }
+    await redis.set('voxelplace:grid', grid)
     await pipe.exec()
 
     // Notifie tous les clients de recharger le canvas

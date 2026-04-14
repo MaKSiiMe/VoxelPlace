@@ -28,10 +28,15 @@ export function useSocket(username: string) {
       setPlayers(payload)
     })
 
+    socket.on('canvas:reload', () => {
+      socket.emit('grid:request')
+    })
+
     return () => {
       socket.off('grid:init')
       socket.off('pixel:update')
       socket.off('players:update')
+      socket.off('canvas:reload')
       socket.disconnect()
     }
   }, [username]) // eslint-disable-line react-hooks/exhaustive-deps

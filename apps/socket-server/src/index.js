@@ -50,6 +50,7 @@ await shareRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 // --- Socket.io ---
 const io = new Server(fastify.server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
+  maxHttpBufferSize: 64e6, // 64MB pour grid:init (4MB buffer → ~8MB JSON)
 })
 
 // --- Joueurs connectés ---
@@ -323,6 +324,18 @@ io.on('connection', async (socket) => {
     connectedPlayers.set(socket.id, { username: cleanUsername, source: cleanSource })
     usernameToSocket.set(cleanUsername.toLowerCase(), socket.id)
     broadcastPlayers()
+  })
+
+  // Renvoie la grille au client qui la demande (après canvas:reload)
+  socket.on('grid:request', async () => {
+    const buf = await loadGrid(redis)
+    socket.emit('grid:init', {
+      grid:    Array.from(buf),
+      size:    GRID_SIZE,
+      colors:  COLORS,
+      players: getPlayersPayload(),
+      stats:   await getStats(),
+    })
   })
 
   // Authentification admin
