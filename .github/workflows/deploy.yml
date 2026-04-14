@@ -43,6 +43,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/voxelplace
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
             docker compose down
             docker compose up --build -d
