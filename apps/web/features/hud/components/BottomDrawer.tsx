@@ -1,101 +1,135 @@
 'use client'
 
-import { useState } from 'react'
 import { useCanvasStore } from '@features/canvas/store'
-import { THIN, TASKBAR, BEZEL_COLOR, BORDER_COLOR } from '../theme'
+import { THIN, TASKBAR, BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED } from '../theme'
 
-const GAP = 8
+interface Props {
+  onLogout?:    () => void
+  onOpenAuth?:  () => void
+}
 
-export function BottomDrawer() {
-  const [open, setOpen] = useState(false)
-
+export function BottomDrawer({ onLogout, onOpenAuth }: Props) {
   const colors        = useCanvasStore((s) => s.colors)
   const selectedColor = useCanvasStore((s) => s.selectedColor)
   const setSelected   = useCanvasStore((s) => s.setSelectedColor)
   const role          = useCanvasStore((s) => s.role)
 
-  const handlers = {
-    onMouseEnter: () => setOpen(true),
-    onMouseLeave: () => setOpen(false),
+  // Badge couleur selon le rôle
+  const roleBadgeColor: Record<string, string> = {
+    superuser:   '#e0af68',
+    admin:       ACCENT_BLUE,
+    superadmin:  ACCENT_RED,
   }
+  const badgeColor = role ? (roleBadgeColor[role] ?? BORDER_COLOR) : BORDER_COLOR
 
   return (
     <div
-      className="fixed pointer-events-none"
+      className="fixed"
       style={{
-        bottom:         0,
+        bottom:         16,
         left:           TASKBAR,
         right:          THIN,
         zIndex:         22,
         display:        'flex',
         justifyContent: 'center',
         alignItems:     'flex-end',
+        pointerEvents:  'none',
       }}
     >
-      <div className="flex flex-col items-center">
-
-        {/* Pill */}
-        <div
-          className="h-10 px-3 rounded-full flex items-center gap-2"
-          style={{
-            background:    BEZEL_COLOR,
-            border:        `1px solid ${BORDER_COLOR}`,
-            transition:    'opacity 200ms ease, transform 200ms ease',
-            opacity:       open ? 1 : 0,
-            transform:     open ? 'translateY(0)' : 'translateY(6px)',
-            pointerEvents: open ? 'auto' : 'none',
-          }}
-          {...handlers}
-        >
-          {!role ? (
-            <span style={{ color: BORDER_COLOR, fontSize: 12, padding: '0 8px' }}>
-              Connectez-vous pour poser des pixels
-            </span>
-          ) : colors.map((hex, id) => (
-            <button
-              key={id}
-              onClick={() => setSelected(selectedColor === id ? null : id)}
-              title={`Couleur ${id}`}
-              style={{
-                background:   hex,
-                width:        22,
-                height:       22,
-                borderRadius: 5,
-                border:       'none',
-                outline:      'none',
-                cursor:       'pointer',
+      {/* Pill */}
+      <div
+        className="h-10 px-3 rounded-full flex items-center gap-2"
+        style={{
+          background:    BEZEL_COLOR,
+          border:        `1px solid ${BORDER_COLOR}`,
+          pointerEvents: 'auto',
+        }}
+      >
+        {!role ? (
+          <button
+            onClick={onOpenAuth}
+            style={{
+              background: 'transparent',
+              border:     'none',
+              color:      BORDER_COLOR,
+              fontSize:   12,
+              padding:    '0 8px',
+              cursor:     'pointer',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = ACCENT_BLUE)}
+            onMouseLeave={e => (e.currentTarget.style.color = BORDER_COLOR)}
+          >
+            Connectez-vous pour poser des pixels
+          </button>
+        ) : (
+          <>
+            {/* Badge rôle */}
+            {role !== 'user' && (
+              <span style={{
+                fontSize:     10,
+                fontWeight:   700,
+                color:        badgeColor,
+                border:       `1px solid ${badgeColor}`,
+                borderRadius: 4,
+                padding:      '1px 5px',
+                fontFamily:   'monospace',
                 flexShrink:   0,
-                transform:    selectedColor === id ? 'scale(1.2)' : 'scale(1)',
-                boxShadow:    selectedColor === id
-                  ? `0 0 8px 2px ${hex}, 0 0 16px 4px ${hex}80`
-                  : 'none',
-                transition:   'transform 120ms ease, box-shadow 120ms ease',
+              }}>
+                {role.toUpperCase()}
+              </span>
+            )}
+
+            {/* Séparateur */}
+            {role !== 'user' && (
+              <div style={{ width: 1, height: 16, background: BORDER_COLOR, flexShrink: 0 }} />
+            )}
+
+            {/* Palette */}
+            {colors.map((hex, id) => (
+              <button
+                key={id}
+                onClick={() => setSelected(selectedColor === id ? null : id)}
+                title={`Couleur ${id}`}
+                style={{
+                  background:   hex,
+                  width:        22,
+                  height:       22,
+                  borderRadius: 5,
+                  border:       'none',
+                  outline:      'none',
+                  cursor:       'pointer',
+                  flexShrink:   0,
+                  transform:    selectedColor === id ? 'scale(1.2)' : 'scale(1)',
+                  boxShadow:    selectedColor === id
+                    ? `0 0 8px 2px ${hex}, 0 0 16px 4px ${hex}80`
+                    : 'none',
+                  transition:   'transform 120ms ease, box-shadow 120ms ease',
+                }}
+              />
+            ))}
+
+            {/* Séparateur + déconnexion */}
+            <div style={{ width: 1, height: 16, background: BORDER_COLOR, flexShrink: 0 }} />
+            <button
+              onClick={onLogout}
+              title="Se déconnecter"
+              style={{
+                background: 'transparent',
+                border:     'none',
+                color:      BORDER_COLOR,
+                cursor:     'pointer',
+                padding:    '2px 4px',
+                fontSize:   16,
+                lineHeight: 1,
+                flexShrink: 0,
               }}
-            />
-          ))}
-        </div>
-
-
-        {/* Bridge */}
-        <div
-          style={{
-            width:         '100%',
-            height:        GAP,
-            pointerEvents: open ? 'auto' : 'none',
-          }}
-          {...handlers}
-        />
-
-        {/* Trigger — seulement le bord bas du cadre */}
-        <div
-          style={{
-            width:         '100%',
-            height:        THIN,
-            pointerEvents: 'auto',
-          }}
-          {...handlers}
-        />
-
+              onMouseEnter={e => (e.currentTarget.style.color = ACCENT_RED)}
+              onMouseLeave={e => (e.currentTarget.style.color = BORDER_COLOR)}
+            >
+              ⏻
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

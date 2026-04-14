@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     description: 'Canvas collaboratif multijoueur en temps réel.',
     images:      ['/og-image.png'],
   },
-  canonical: BASE_URL,
+  alternates: { canonical: BASE_URL },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

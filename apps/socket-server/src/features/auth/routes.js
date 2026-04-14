@@ -54,7 +54,8 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         [clean, passwordHash, role]
       )
       const user = result.rows[0]
-      await unlockBaseNodes(pool, user.username)
+      // Non-bloquant — ne doit pas empêcher la connexion si la table n'existe pas encore
+      unlockBaseNodes(pool, user.username).catch(err => console.warn('[auth:register] unlockBaseNodes:', err.message))
       const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
       reply.status(201).send({ token, username: user.username, role: user.role })
     } catch (err) {

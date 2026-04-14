@@ -9,6 +9,7 @@ import {
   type FederatedPointerEvent,
 } from 'pixi.js'
 import { useCanvasStore, DEFAULT_COLORS } from '../store'
+import { viewportState, registerNavigate, unregisterNavigate } from '../viewportState'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
@@ -110,10 +111,23 @@ export function usePixiCanvas(
       app.stage.addChild(gridSprite)
       centerOnOrigin(app, gridSprite)
 
+      // ── Register navigate callback for minimap click-to-navigate ──
+      registerNavigate((gx, gy) => {
+        const S = gridSprite.scale.x
+        gridSprite.x = app.renderer.width  / 2 - gx * S
+        gridSprite.y = app.renderer.height / 2 + gy * S
+      })
+
       // ── Grid overlay — manipulé directement en DOM via data-attribute ──
       app.ticker.add(() => {
         const scale = gridSprite.scale.x
         useCanvasStore.getState().setPixelSize(scale)
+        // Mise à jour du viewport pour la minimap (sans re-render React)
+        viewportState.spriteX = gridSprite.x
+        viewportState.spriteY = gridSprite.y
+        viewportState.scale   = scale
+        viewportState.screenW = app.renderer.width
+        viewportState.screenH = app.renderer.height
         const el = document.getElementById('canvas-grid-overlay')
         if (!el) return
         const opacity = Math.min(1, (scale - 4) / 4)
@@ -260,6 +274,7 @@ export function usePixiCanvas(
         window.removeEventListener('keyup',   onKeyUp)
         resizeObs?.disconnect()
         unsubGrid?.()
+        unregisterNavigate()
       }
 
       initComplete = true

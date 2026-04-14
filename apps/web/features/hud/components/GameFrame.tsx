@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { HUD_SHADOW, THIN, TASKBAR, RADIUS, BORDER_COLOR, ACCENT_RED, ACCENT_GREEN } from '../theme'
 import { NOTCH_W, NOTCH_H, NOTCH_R } from './Notch'
 import { useCanvasStore } from '@features/canvas/store'
+import { SupportModal }      from './SupportModal'
+import { SettingsModal }     from './SettingsModal'
+import { LeaderboardModal }  from './LeaderboardModal'
+import { StatsModal }        from './StatsModal'
+import { UnlockPanel }       from '@features/unlocks/components/UnlockPanel'
 
 const ACCENT_BLUE   = '#7aa2f7'
 const ACCENT_YELLOW = '#e0af68'
@@ -59,10 +64,20 @@ function innerPath(w: number, h: number): string {
   ].join(' ')
 }
 
-export function GameFrame() {
-  const [vp, setVp] = useState({ w: 0, h: 0 })
+interface Props {
+  username:  string
+  onLogout:  () => void
+}
+
+export function GameFrame({ username, onLogout }: Props) {
+  const [vp, setVp]             = useState({ w: 0, h: 0 })
   const [borderColor, setBorderColor] = useState(BORDER_COLOR)
   const [glowBlur, setGlowBlur] = useState(2)
+  const [showSupport,      setShowSupport]      = useState(false)
+  const [showSettings,     setShowSettings]     = useState(false)
+  const [showUnlocks,      setShowUnlocks]      = useState(false)
+  const [showLeaderboard,  setShowLeaderboard]  = useState(false)
+  const [showStats,        setShowStats]        = useState(false)
   const rafRef = useRef<number>(0)
 
   const role          = useCanvasStore((s) => s.role)
@@ -165,6 +180,74 @@ export function GameFrame() {
         </div>
 
         <div className="flex flex-col items-center gap-3 mb-4">
+          {/* Bouton Leaderboard */}
+          <button
+            onClick={() => setShowLeaderboard(v => !v)}
+            className="flex items-center justify-center rounded-lg"
+            style={{
+              width: 36, height: 36,
+              background: showLeaderboard ? `${ACCENT_YELLOW}22` : 'transparent',
+              border:     showLeaderboard ? `1px solid ${ACCENT_YELLOW}` : '1px solid transparent',
+              color:      showLeaderboard ? ACCENT_YELLOW : BORDER_COLOR,
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+            onMouseEnter={e => { if (!showLeaderboard) e.currentTarget.style.color = ACCENT_YELLOW }}
+            onMouseLeave={e => { if (!showLeaderboard) e.currentTarget.style.color = BORDER_COLOR }}
+            title="Leaderboard"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+              <polyline points="17 6 23 6 23 12"/>
+            </svg>
+          </button>
+
+          {/* Bouton Stats joueur */}
+          <button
+            onClick={() => setShowStats(v => !v)}
+            className="flex items-center justify-center rounded-lg"
+            style={{
+              width: 36, height: 36,
+              background: showStats ? `${ACCENT_BLUE}22` : 'transparent',
+              border:     showStats ? `1px solid ${ACCENT_BLUE}` : '1px solid transparent',
+              color:      showStats ? ACCENT_BLUE : BORDER_COLOR,
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+            onMouseEnter={e => { if (!showStats) e.currentTarget.style.color = ACCENT_BLUE }}
+            onMouseLeave={e => { if (!showStats) e.currentTarget.style.color = BORDER_COLOR }}
+            title="Mes stats"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6"  y1="20" x2="6"  y2="14"/>
+            </svg>
+          </button>
+
+          {/* Bouton Arbre de compétences */}
+          <button
+            onClick={() => setShowUnlocks(v => !v)}
+            className="flex items-center justify-center rounded-lg"
+            style={{
+              width:      36,
+              height:     36,
+              background: showUnlocks ? `${ACCENT_BLUE}22` : 'transparent',
+              border:     showUnlocks ? `1px solid ${ACCENT_BLUE}` : '1px solid transparent',
+              color:      showUnlocks ? ACCENT_BLUE : BORDER_COLOR,
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+            onMouseEnter={e => { if (!showUnlocks) { e.currentTarget.style.color = ACCENT_BLUE } }}
+            onMouseLeave={e => { if (!showUnlocks) { e.currentTarget.style.color = BORDER_COLOR } }}
+            title="Arbre de compétences"
+          >
+            {/* Tree icon */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </button>
+
           {/* Bouton Edit / Spec — visible uniquement pour les admins */}
           {isAdmin && (
             <button
@@ -199,6 +282,7 @@ export function GameFrame() {
           )}
 
           <button
+            onClick={() => setShowSupport(true)}
             className="flex items-center justify-center rounded-lg transition-colors"
             style={{ width: 36, height: 36, color: BORDER_COLOR, background: 'transparent' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#7aa2f7')}
@@ -210,6 +294,7 @@ export function GameFrame() {
             </svg>
           </button>
           <button
+            onClick={() => setShowSettings(true)}
             className="flex items-center justify-center rounded-lg transition-colors"
             style={{ width: 36, height: 36, color: BORDER_COLOR, background: 'transparent' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#7aa2f7')}
@@ -222,6 +307,12 @@ export function GameFrame() {
           </button>
         </div>
       </div>
+
+      <UnlockPanel open={showUnlocks} onClose={() => setShowUnlocks(false)} />
+      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      {showStats       && <StatsModal username={username} onClose={() => setShowStats(false)} />}
+      {showSupport     && <SupportModal  onClose={() => setShowSupport(false)} />}
+      {showSettings    && <SettingsModal username={username} onClose={() => setShowSettings(false)} onLogout={onLogout} />}
     </>
   )
 }
