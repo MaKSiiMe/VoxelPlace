@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'
 import { unlockBaseNodes } from '../unlocks/engine.js'
 import { checkRateLimit } from './rate-limit.js'
 
-const SALT_ROUNDS = 10
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '10', 10)
 
 // ── Fonctions pures (testables) ──────────────────────────────────────────────
 
