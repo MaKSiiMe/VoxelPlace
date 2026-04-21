@@ -15,8 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: apps/socket-server/package-lock.json
 
       - name: Install dependencies
         working-directory: apps/socket-server
@@ -36,8 +34,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
 
       - name: Install workspace dependencies
         run: npm ci
