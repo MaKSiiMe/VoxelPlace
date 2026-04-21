@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+import { API_URL } from '@shared/api'
 
 export const socket = io(API_URL, {
   autoConnect: false,

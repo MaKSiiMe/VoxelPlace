@@ -22,9 +22,12 @@ import { unlockRoutes } from './features/unlocks/routes.js'
 import { reportRoutes } from './features/report/routes.js'
 import { profileRoutes } from './features/profile/routes.js'
 
-const PORT       = parseInt(process.env.PORT || '3001', 10)
-const REDIS_URL  = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
+const PORT            = parseInt(process.env.PORT || '3001', 10)
+const REDIS_URL       = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
+const JWT_SECRET      = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:5173', 'http://localhost:3000']
 
 // Comptes sans cooldown (ex: comptes de test ou bots internes)
 const TEST_USERNAMES = new Set(
@@ -38,7 +41,7 @@ redis.on('error',   (err) => console.error('[Redis] Erreur :', err.message))
 
 // --- Fastify ---
 const fastify = Fastify({ logger: false })
-await fastify.register(cors, { origin: '*', methods: ['GET', 'POST'] })
+await fastify.register(cors, { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'] })
 
 // --- Routes REST (features) ---
 await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
@@ -49,7 +52,7 @@ await shareRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 
 // --- Socket.io ---
 const io = new Server(fastify.server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'] },
   maxHttpBufferSize: 64e6, // 64MB pour grid:init (4MB buffer → ~8MB JSON)
 })
 

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { unlockBaseNodes } from '../unlocks/engine.js'
+import { checkRateLimit } from './rate-limit.js'
 
 const SALT_ROUNDS = 10
 
@@ -33,6 +34,10 @@ export function verifyToken(token, secret) {
 export async function authRoutes(fastify, { pool, jwtSecret }) {
   // POST /api/auth/register
   fastify.post('/api/auth/register', async (req, reply) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
+    if (!checkRateLimit(ip)) {
+      return reply.status(429).send({ error: 'Trop de tentatives, réessayez dans 1 minute' })
+    }
     const { username, password } = req.body || {}
     if (!username || typeof username !== 'string' || !password || typeof password !== 'string') {
       return reply.status(400).send({ error: 'username et password requis' })
@@ -70,6 +75,10 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
 
   // POST /api/auth/login
   fastify.post('/api/auth/login', async (req, reply) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
+    if (!checkRateLimit(ip)) {
+      return reply.status(429).send({ error: 'Trop de tentatives, réessayez dans 1 minute' })
+    }
     const { username, password } = req.body || {}
     if (!username || !password) {
       return reply.status(400).send({ error: 'username et password requis' })

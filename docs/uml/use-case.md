@@ -1,51 +1,62 @@
 # Diagramme de Cas d'Utilisation — VoxelPlace
 
 ```mermaid
-flowchart TB
-    JW(["👤 Joueur Web"])
-    JM(["⛏ Joueur Minecraft"])
-    AD(["👑 Administrateur"])
+flowchart LR
+    Anon(["👁 Visiteur"])
+    Auth(["👤 Joueur connecté"])
+    MC(["⛏ Minecraft"])
+    Admin(["👑 Admin"])
 
-    subgraph SYS["Système VoxelPlace"]
-        direction TB
-
-        subgraph PUBLIC["Accessible à tous"]
-            UC1["Choisir un pseudo"]
-            UC2["Voir le canvas en temps réel"]
-            UC3["Sélectionner une couleur"]
-            UC4["Placer un pixel"]
-            UC5["Zoomer / Déplacer la vue"]
-            UC6["Voir les infos d'un pixel (hover)"]
-            UC7["Voir les joueurs connectés"]
-        end
-
-        subgraph MINECRAFT["Spécifique Minecraft"]
-            UC8["Placer un bloc coloré"]
-            UC9["Action bar (position + couleur)"]
-            UC10["Commandes /vp"]
-        end
-
-        subgraph ADMIN["Réservé Administrateur"]
-            UC11["S'authentifier (mot de passe)"]
-            UC12["Supprimer un pixel"]
-            UC13["Vider tout le canvas"]
-        end
+    subgraph Lecture["Lecture seule"]
+        UC1["Voir le canvas temps réel"]
+        UC2["Zoom / Navigation"]
+        UC3["Hover pixel (auteur, coords)"]
+        UC4["Voir le leaderboard"]
     end
 
-    JW --> UC1
-    JW --> UC2
-    JW --> UC3
-    JW --> UC4
-    JW --> UC5
-    JW --> UC6
-    JW --> UC7
+    subgraph Compte["Gestion du compte"]
+        UC5["S'inscrire / Se connecter"]
+        UC6["Supprimer son compte (RGPD)"]
+    end
 
-    JM --> UC2
-    JM --> UC8
-    JM --> UC9
-    JM --> UC10
+    subgraph Jeu["Actions de jeu"]
+        UC7["Placer un pixel"]
+        UC8["Débloquer couleurs & fonctions"]
+        UC9["Signaler un pixel / joueur"]
+        UC10["Chat sur un pixel"]
+        UC11["Partager une zone"]
+    end
 
-    AD --> UC11
-    UC11 -->|"débloque"| UC12
-    UC11 -->|"débloque"| UC13
+    subgraph MinecraftUC["Minecraft"]
+        UC12["Placer un bloc (16 couleurs)"]
+        UC13["Commandes /vp"]
+    end
+
+    subgraph AdminUC["Administration"]
+        UC14["Modérer (ban, clear, restore)"]
+        UC15["Traiter les signalements"]
+        UC16["Voir les logs"]
+    end
+
+    Anon --> Lecture
+    Anon --> UC5
+
+    Auth --> Lecture
+    Auth --> Compte
+    Auth --> Jeu
+
+    MC --> UC12
+    MC --> UC13
+
+    Admin --> AdminUC
 ```
+
+---
+
+| Acteur | Cooldown pixel | Accès |
+|--------|---------------|-------|
+| Visiteur | — | Lecture seule |
+| `user` | 60 s | Jeu complet |
+| `superuser` (hbtn_*) | 1 s | Jeu complet |
+| `admin` | 5 s | + modération |
+| `superadmin` | 0 s | Accès total |

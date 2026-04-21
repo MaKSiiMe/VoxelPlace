@@ -2,67 +2,47 @@
 
 ```mermaid
 graph TB
-    subgraph EXT["Utilisateurs externes"]
-        Browser["🌐 Navigateur Web\nHTTP port 80"]
-        MCClient["⛏ Client Minecraft 1.21.1\nTCP port 25565"]
-        RBStudio["🎮 Roblox Studio\nhébergé Roblox Inc"]
-        HYClient["🏔 Client Hytale\n(futur)"]
+    Browser["🌐 Navigateur Web"]
+    MCClient["⛏ Client Minecraft 1.21.1"]
+
+    subgraph Internet["Internet"]
+        Funnel["Tailscale Funnel\nHTTPS auto"]
+        Playit["Playit.gg\nTunnel TCP 25565"]
     end
 
-    subgraph GH["GitHub"]
-        Repo["Repository\nbranch main"]
-        Actions["GitHub Actions\nCI/CD"]
+    subgraph Server["Serveur Debian — Docker Compose"]
+        Web["voxelplace-web\nNext.js 16 — port 80"]
+        API["voxelplace-api\nFastify + Socket.io — port 3001"]
+        DB[("voxelplace-db\nPostgreSQL 16")]
+        Redis[("voxelplace-redis\nRedis 7")]
+        MC["Paper 1.21.1\n+ Plugin VoxelPlace\n(hors Docker)"]
     end
 
-    subgraph Server["Serveur Debian — Tailscale 100.124.153.20"]
-        subgraph Docker["Docker Engine"]
-            ContainerFront["voxelplace-web\nNext.js 16 standalone\nNode 20-alpine · port 80→3000"]
-            ContainerAPI["voxelplace-api\nFastify 5 + Socket.io 4\nNode 20-alpine · port 3001"]
-            ContainerDB["voxelplace-db\nPostgreSQL 16-alpine\nport 5432 (interne)"]
-            ContainerMC["minecraft-paper\nPaper 1.21.1\nport 25565"]
-        end
-        Redis[("Redis 7\nport 6379\n(externe Docker)")]
+    subgraph CICD["CI/CD"]
+        GH["GitHub Actions\ntest → deploy SSH"]
     end
 
-    subgraph Dev["Développeur — WSL2"]
-        LocalDev["VS Code + Claude Code\nnpm run dev (Turbopack)"]
-    end
+    Browser   -->|HTTPS / WSS| Funnel
+    MCClient  -->|TCP| Playit
 
-    Browser -->|"HTTP GET /"| ContainerFront
-    Browser -->|"WebSocket /socket.io"| ContainerAPI
-    MCClient -->|"TCP"| ContainerMC
-    RBStudio -->|"WebSocket"| ContainerAPI
-    HYClient -.->|"WebSocket (futur)"| ContainerAPI
+    Funnel --> Web
+    Funnel --> API
+    Playit --> MC
 
-    ContainerFront -->|"NEXT_PUBLIC_API_URL\nhttp://voxelplace-api:3001"| ContainerAPI
-    ContainerMC -->|"socket.io-client"| ContainerAPI
-    ContainerAPI -->|"SETRANGE / HGET"| Redis
-    ContainerAPI -->|"INSERT / SELECT\nDATABASE_URL"| ContainerDB
+    Web --> API
+    MC  -->|socket.io-client| API
+    API --> Redis
+    API --> DB
 
-    LocalDev -->|"git push"| Repo
-    Repo --> Actions
-    Actions -->|"SSH via Tailscale\ngit pull + docker compose up"| Server
+    GH -->|SSH Tailscale\ngit reset + docker compose up| Server
 ```
 
 ---
 
-## Description des conteneurs
-
-| Conteneur | Image | Port exposé | Rôle |
-|-----------|-------|-------------|------|
-| `voxelplace-web` | `node:20-alpine` (Next.js standalone) | `80 → 3000` | Serveur SSR/CSR Next.js — sert les pages React + assets statiques |
-| `voxelplace-api` | `node:20-alpine` | `3001` | Fastify 5 + Socket.io 4 — API REST + WebSocket temps réel |
-| `voxelplace-db` | `postgres:16-alpine` | `5432` (interne) | PostgreSQL — tables `users` + `pixel_history` |
-| `minecraft-paper` | Manuel | `25565` | Serveur Paper 1.21.1 avec plugin VoxelPlace |
-
-> **Redis** tourne en dehors de Docker sur le même serveur (`192.168.68.51:6379`).
-
-## Build Next.js — Multi-stage Dockerfile
-
-```
-Stage 1 : deps     → npm ci (workspace node_modules)
-Stage 2 : builder  → npx turbo build --filter=@voxelplace/web → .next/standalone
-Stage 3 : runner   → node:20-alpine, node apps/web/server.js
-```
-
-La sortie `output: 'standalone'` de Next.js produit un bundle autonome sans `node_modules` complet, ce qui réduit l'image finale à ~150 Mo.
+| Composant | Image | Port |
+|-----------|-------|------|
+| `voxelplace-web` | node:20-alpine (Next.js standalone) | 80 |
+| `voxelplace-api` | node:20-alpine | 3001 |
+| `voxelplace-db` | postgres:16-alpine | 5432 (interne) |
+| `voxelplace-redis` | redis:7-alpine (RDB + AOF) | 6379 (interne) |
+| Paper 1.21.1 | JVM — hors Docker | 25565 via Playit.gg |

@@ -3,239 +3,123 @@
 ```mermaid
 classDiagram
 
-    %% ─── Entités métier ───────────────────────────────────────────────────────
-
-    class User {
-        +int id
-        +string username
-        -string passwordHash
-        +string source
-        +timestamp createdAt
-        +register(username, password) User
-        +login(username, password) Token
-        +hashPassword(password) string
-        +verifyPassword(password) boolean
-    }
-
-    class Pixel {
-        +int x
-        +int y
-        +int colorId
-        +string username
-        +string source
-        +timestamp placedAt
-    }
-
-    class Color {
-        +int id
-        +string name
-        +string hexCode
-    }
-
-    %% ─── Backend — Fastify + Socket.io ───────────────────────────────────────
+    %% ── Backend ──────────────────────────────────────────────────────────────
 
     class VoxelPlaceServer {
-        -Fastify app
-        -Server io
-        -Redis redis
-        -Pool pgPool
-        -Map connectedPlayers
-        +start(port) void
-        +broadcastPlayers() void
-        +getPlayersPayload() PlayersPayload
-        +getStats() StatsPayload
+        +start(port)
+        +broadcastPlayers()
     }
 
     class GridService {
+        +GRID_SIZE : int
         +loadGrid(redis) Buffer
-        +setPixel(redis, pixel) PixelMeta
-        +getPixelMeta(redis, x, y) PixelMeta
+        +setPixel(redis, pixel)
         +getPixelIndex(x, y) int
-        +GRID_SIZE int
-    }
-
-    class ValidationUtils {
-        +isValidCoord(v) boolean
-        +sanitizeUsername(raw) string
-        +validatePixel(data) Pixel
     }
 
     class AuthRoutes {
-        +register(fastify, opts) void
-        +POST_register(username, password) Token
-        +POST_login(username, password) Token
+        +POST_register()
+        +POST_login()
+        +DELETE_account()
     }
 
-    class DatabasePool {
-        -Pool pgPool
-        +connectWithRetry() Pool
-        +query(sql, params) Result
+    class AdminRoutes {
+        +POST_ban()
+        +DELETE_canvas()
+        +POST_restoreCanvas()
     }
 
-    %% ─── Frontend — Next.js App Router ───────────────────────────────────────
+    class UnlockEngine {
+        +processPixelPlaced()
+        +checkFeatureUnlocks()
+    }
+
+    %% ── Frontend ─────────────────────────────────────────────────────────────
 
     class GamePage {
-        -string username
-        +getOrCreateUsername() string
-        +render() JSX
-    }
-
-    class CanvasEngine {
-        -RefObject containerRef
-        +render() JSX
-    }
-
-    class usePixiCanvas {
-        -Application app
-        -BufferImageSource bufferSource
-        -Sprite gridSprite
-        -boolean isPanning
-        -boolean isSpaceDown
-        +init() Promise~void~
-        +fitAndCenter(app, sprite, size) void
-        +gridToRGBA(grid, size) Uint8Array
-        +onWheel(e) void
-        +onKeyDown(e) void
+        +getStoredAuth()
+        +handleAuthSuccess()
     }
 
     class CanvasStore {
-        +Uint8Array grid
-        +int gridSize
-        +int selectedColor
-        +hoveredPixel object
-        +string[] colors
-        +players PlayersPayload
-        +int cooldownUntil
-        +setGrid(grid) void
-        +setSelectedColor(colorId) void
-        +setHoveredPixel(pixel) void
-        +setCooldown(seconds) void
-        +updatePixel(x, y, colorId) void
-        +placePixel(x, y, username) void
+        +grid : Uint8Array
+        +selectedColor : int
+        +cooldownEnd : number
+        +role : string
+        +updatePixel(x, y, colorId)
+        +setCooldown(ms)
     }
 
-    class GameFrame {
-        +render() JSX
-    }
-
-    class ColorDock {
-        +render() JSX
-    }
-
-    class SidebarLeft {
-        +render() JSX
-    }
-
-    class StatusPills {
-        +render() JSX
-    }
-
-    class CockpitStore {
-        +boolean isSidebarOpen
-        +string activeNavItem
-        +toggleSidebar() void
-        +setActiveNavItem(item) void
+    class usePixiCanvas {
+        +gridToRGBA(grid) Uint8Array
+        +handleClick(e)
     }
 
     class useSocket {
-        +connect(username) void
-        +on_grid_init(payload) void
-        +on_pixel_update(payload) void
-        +on_players_update(payload) void
-        +disconnect() void
+        +connect(username)
+        +emit_pixel_place(x, y, colorId)
     }
 
-    class SocketClient {
-        -string API_URL
-        +socket Socket
-        +autoConnect boolean
+    class AuthModal {
+        +handleSubmit()
     }
 
-    %% ─── Plugin Minecraft ────────────────────────────────────────────────────
+    class AdminGuard {
+        +getRole() string
+    }
+
+    %% ── Plugin Minecraft ─────────────────────────────────────────────────────
 
     class VoxelPlacePlugin {
-        -CanvasManager canvasManager
-        -SocketManager socketManager
-        +onEnable() void
-        +onDisable() void
+        +onEnable()
+        +onDisable()
     }
 
     class CanvasManager {
-        -World world
-        -int cornerX
-        -int cornerY
-        -int cornerZ
-        -byte[] grid
-        +setPixel(x, y, colorId) void
-        +initGrid(data) void
-        +getCanvasCoords(block) int[]
+        +COLOR_MATERIALS : Material[16]
+        +setPixelLocal(dx, dz, colorId)
+        +materialToColorId(mat) int
     }
 
     class SocketManager {
-        -Socket socket
-        +connect() void
-        +disconnect() void
-        +emitPixelPlace(x, y, colorId, username) void
+        +connect()
+        +emitPixelPlace(x, y, colorId, username)
     }
 
     class CanvasListener {
-        +onPlayerInteract(event) void
-        +onBlockBreak(event) void
+        +onPlayerInteract(event)
     }
 
-    class VoxelCommand {
-        +onCommand(sender, cmd, args) boolean
-    }
+    %% ── Relations ────────────────────────────────────────────────────────────
 
-    %% ─── Relations ───────────────────────────────────────────────────────────
+    VoxelPlaceServer --> GridService    : utilise
+    VoxelPlaceServer --> AuthRoutes     : enregistre
+    VoxelPlaceServer --> AdminRoutes    : enregistre
+    VoxelPlaceServer --> UnlockEngine   : utilise
 
-    User       "1" --> "n" Pixel    : place
-    Pixel      "n" --> "1" Color    : utilise
+    GamePage        --> useSocket       : hook
+    GamePage        --> AuthModal       : affiche
+    useSocket       --> CanvasStore     : setGrid / updatePixel
+    usePixiCanvas   --> CanvasStore     : subscribe
+    AdminGuard      ..> GamePage        : protège /dashboard
 
-    VoxelPlaceServer --> GridService      : utilise
-    VoxelPlaceServer --> ValidationUtils  : utilise
-    VoxelPlaceServer --> AuthRoutes       : enregistre
-    VoxelPlaceServer --> DatabasePool     : utilise
+    VoxelPlacePlugin *-- CanvasManager  : composition
+    VoxelPlacePlugin *-- SocketManager  : composition
+    VoxelPlacePlugin *-- CanvasListener : composition
+    CanvasListener   --> CanvasManager  : utilise
+    CanvasListener   --> SocketManager  : utilise
 
-    GamePage        --> CanvasEngine   : render
-    GamePage        --> GameFrame      : render
-    GamePage        --> useSocket      : hook
-    CanvasEngine    --> usePixiCanvas  : hook
-    usePixiCanvas   --> CanvasStore    : subscribe
-    GameFrame       --> SidebarLeft    : render
-    GameFrame       --> ColorDock      : render
-    GameFrame       --> StatusPills    : render
-    ColorDock       --> CanvasStore    : selectedColor / setSelectedColor
-    StatusPills     --> CanvasStore    : players / hoveredPixel
-    SidebarLeft     --> CockpitStore   : activeNavItem
-    useSocket       --> CanvasStore    : setGrid / updatePixel / setPlayers
-    useSocket       --> SocketClient   : socket
-
-    VoxelPlacePlugin  *-- CanvasManager   : composition
-    VoxelPlacePlugin  *-- SocketManager   : composition
-    CanvasListener    --> CanvasManager   : utilise
-    CanvasListener    --> SocketManager   : utilise
-    VoxelCommand      --> CanvasManager   : utilise
-    VoxelCommand      --> SocketManager   : utilise
-
-    SocketManager  ..> VoxelPlaceServer  : WebSocket
-    SocketClient   ..> VoxelPlaceServer  : WebSocket
+    SocketManager  ..> VoxelPlaceServer : WebSocket
+    useSocket      ..> VoxelPlaceServer : WebSocket
 ```
 
 ---
 
-## Notes sur l'architecture
+## Architecture en couches
 
-### Zustand vs React state
-Les stores **CanvasStore** et **CockpitStore** sont des singletons Zustand avec `subscribeWithSelector`. Le moteur PixiJS (`usePixiCanvas`) s'abonne directement à `CanvasStore` **sans passer par React** : il n'y a aucun re-render React lors d'un `pixel:update` entrant — seule la texture GPU est mise à jour.
-
-### Séparation des responsabilités (features)
-
-| Feature | Responsabilité |
-|---------|----------------|
-| `canvas/` | Moteur PixiJS, store grille, zoom/pan, placement pixel |
-| `hud/` | Chrome UI (GameFrame, ColorDock, StatusPills, SidebarLeft), store UI |
-| `realtime/` | Socket.io client singleton + hook de connexion |
-| `stats/` | Dashboard analytics (Phase 5) |
-| `admin/` | Modération (Phase 5) |
-| `platforms/` | UI spécifique par plateforme (Phase 6) |
+| Couche | Technologie | Rôle |
+|--------|-------------|------|
+| **Frontend** | Next.js 16 + Pixi.js + Zustand | Canvas GPU, HUD, auth |
+| **Backend** | Fastify 5 + Socket.io 4 | API REST + WebSocket |
+| **Stockage** | Redis + PostgreSQL | Grille temps réel + historique |
+| **Minecraft** | Paper 1.21.1 + socket.io-client | Pont jeu ↔ canvas |

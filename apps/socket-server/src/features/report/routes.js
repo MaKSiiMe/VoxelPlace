@@ -73,10 +73,11 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
       ? req.query.status : 'pending'
     const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200)
 
-    const where  = status === 'all' ? '' : `WHERE status = '${status}'`
+    const where  = status === 'all' ? '' : 'WHERE status = $2'
+    const params = status === 'all' ? [limit] : [limit, status]
     const { rows } = await pool.query(
       `SELECT * FROM reports ${where} ORDER BY created_at DESC LIMIT $1`,
-      [limit]
+      params
     )
     reply.send({ reports: rows, total: rows.length })
   })

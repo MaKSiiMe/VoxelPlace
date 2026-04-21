@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+import { API_URL as API } from '@shared/api'
 
 const BEZEL_COLOR  = '#24283b'
 const BORDER_COLOR = '#414868'

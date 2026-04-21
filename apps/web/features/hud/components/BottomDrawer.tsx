@@ -90,6 +90,8 @@ export function BottomDrawer({ onLogout, onOpenAuth }: Props) {
                 key={id}
                 onClick={() => setSelected(selectedColor === id ? null : id)}
                 title={`Couleur ${id}`}
+                aria-label={`Couleur ${id}${selectedColor === id ? ' (sélectionnée)' : ''}`}
+                aria-pressed={selectedColor === id}
                 style={{
                   background:   hex,
                   width:        22,

@@ -1,94 +1,96 @@
 # ERD / Merise — VoxelPlace
 
-> VoxelPlace utilise **Redis** (NoSQL) pour la performance temps réel.
-> Ce document présente l'équivalent **SQL** (MCD → MLD → ERD Mermaid).
+> **Redis** stocke la grille courante (buffer binaire 4 Mo, lecture O(1)).
+> **PostgreSQL** stocke tout ce qui nécessite de l'historique ou des requêtes SQL.
 
 ---
 
 ## MCD — Modèle Conceptuel de Données
 
 ```
-┌─────────────────────┐          ┌─────────────┐          ┌────────────────────┐
-│       JOUEUR        │          │    PLACE    │          │       PIXEL        │
-│─────────────────────│  1,n     │─────────────│  1,1     │────────────────────│
-│ <u>id</u>           │──────────│ updated_at  │──────────│ <u>x</u>           │
-│ username            │          │             │          │ <u>y</u>           │
-│ password_hash       │          └─────────────┘          │ color_id           │
-│ source              │                                   └────────────────────┘
-│ created_at          │                                            │
-└─────────────────────┘                                      1,1   │ A_POUR_COULEUR
-                                                             0,n   │
-                                                    ┌─────────────────────┐
-                                                    │      COULEUR        │
-                                                    │─────────────────────│
-                                                    │ <u>id</u>           │
-                                                    │ nom                 │
-                                                    │ hex_code            │
-                                                    └─────────────────────┘
+USERS ──(1,n)── PLACE ──(1,1)── PIXEL_HISTORY
+  │
+  ├─(1,1)── A ──── USER_STATS
+  ├─(1,n)── DÉBLOQUE ──── USER_UNLOCKS
+  ├─(0,1)── EST_BANNI ──── BANS
+  └─(0,n)── SOUMET ──── REPORTS
 ```
-
-**Cardinalités :**
-- Un `JOUEUR` **place** `1,n` PIXEL ↔ un PIXEL est placé par `1,1` JOUEUR
-- Un `PIXEL` **a pour couleur** `1,1` COULEUR ↔ une COULEUR colorie `0,n` PIXEL
 
 ---
 
 ## MLD — Modèle Logique de Données
 
 ```
-COULEUR ( #id, nom, hex_code )
-
-JOUEUR  ( #id, username, password_hash, source, created_at )
-
-PIXEL   ( #x, #y, color_id=>COULEUR.id, joueur_id=>JOUEUR.id, updated_at )
+USERS         ( #id, username, password_hash, role, streak_hours, created_at )
+PIXEL_HISTORY ( #id, x, y, color_id, username, source, placed_at )
+USER_STATS    ( #username=>USERS, pixels_placed, pixels_lost, pixels_overwritten )
+USER_UNLOCKS  ( #username=>USERS, #node_id, unlocked_at )
+BANS          ( #username=>USERS, reason, banned_by, expires_at )
+REPORTS       ( #id, reporter, target_type, x, y, reason, status )
+SHARED_ZONES  ( #id, x, y, w, h, label, created_by=>USERS, expires_at )
+PIXEL_MESSAGES( #id, x, y, username=>USERS, message, created_at )
+MODERATION_LOGS( #id, action, target, admin=>USERS, created_at )
 ```
 
-*Légende : # = clé primaire, => = clé étrangère*
+*# = clé primaire · => = référence*
 
 ---
 
-## ERD — Entity Relationship Diagram (MermaidJS)
+## ERD (MermaidJS)
 
 ```mermaid
 erDiagram
-    JOUEUR {
-        int id PK
-        varchar username
-        varchar password_hash
-        varchar source
-        timestamp created_at
+    USERS {
+        serial   id PK
+        varchar  username UK
+        varchar  password_hash
+        varchar  role
+        int      streak_hours
+    }
+    PIXEL_HISTORY {
+        bigserial id PK
+        smallint  x
+        smallint  y
+        smallint  color_id
+        varchar   username
+        varchar   source
+        timestamp placed_at
+    }
+    USER_STATS {
+        varchar username PK
+        int     pixels_placed
+        int     pixels_lost
+    }
+    USER_UNLOCKS {
+        varchar username PK
+        varchar node_id  PK
+    }
+    BANS {
+        varchar username PK
+        varchar reason
+        timestamp expires_at
+    }
+    REPORTS {
+        serial  id PK
+        varchar reporter
+        varchar target_type
+        varchar status
     }
 
-    PIXEL {
-        int x PK
-        int y PK
-        int color_id FK
-        int joueur_id FK
-        timestamp updated_at
-    }
-
-    COULEUR {
-        int id PK
-        varchar nom
-        varchar hex_code
-    }
-
-    JOUEUR ||--o{ PIXEL : "place (1,n / 1,1)"
-    COULEUR ||--o{ PIXEL : "colorie (1,1 / 0,n)"
+    USERS         ||--o{ PIXEL_HISTORY  : "pose"
+    USERS         ||--o| USER_STATS     : "a"
+    USERS         ||--o{ USER_UNLOCKS   : "débloque"
+    USERS         |o--o| BANS           : "peut être banni"
+    USERS         ||--o{ REPORTS        : "signale"
 ```
 
 ---
 
-## Justification du choix Redis
+## Justification Redis vs PostgreSQL
 
-| Critère | Redis (actuel) | PostgreSQL |
-|---------|----------------|------------|
-| Lecture grille | O(1) — buffer 4096 bytes | O(n) — SELECT |
-| Temps réel | ✅ Natif | ❌ Polling |
-| Schéma fixe | ✅ Non requis | ❌ Migrations |
-| Requêtes SQL | ❌ Non supporté | ✅ Jointures, agrégats |
-| Persistance | ✅ RDB/AOF | ✅ ACID complet |
-| Auth utilisateurs | ❌ Pas adapté | ✅ Idéal |
-
-**Évolution prévue :** PostgreSQL en complément pour les comptes utilisateurs
-(table `JOUEUR` avec `password_hash` bcrypt), Redis conservant la grille temps réel.
+| Critère | Redis | PostgreSQL |
+|---------|-------|-----------|
+| Lecture grille (2048×2048) | O(1) — 4 Mo buffer | O(n) — reconstruction |
+| Écriture pixel | O(1) — SETRANGE | INSERT pixel_history |
+| Requêtes analytiques | ❌ | ✅ heatmap, timelapse, stats |
+| Auth / ACID | ❌ | ✅ bcrypt, transactions |

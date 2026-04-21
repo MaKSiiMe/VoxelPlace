@@ -57,16 +57,20 @@ export function AuthModal({ onSuccess }: Props) {
 
   return (
     /* Overlay */
-    <div style={{
-      position:       'fixed',
-      inset:          0,
-      zIndex:         50,
-      display:        'flex',
-      alignItems:     'center',
-      justifyContent: 'center',
-      background:     'rgba(0,0,0,0.7)',
-      backdropFilter: 'blur(4px)',
-    }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      style={{
+        position:       'fixed',
+        inset:          0,
+        zIndex:         50,
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'center',
+        background:     'rgba(0,0,0,0.7)',
+        backdropFilter: 'blur(4px)',
+      }}>
       {/* Card */}
       <div style={{
         background:   BEZEL_COLOR,
@@ -82,7 +86,7 @@ export function AuthModal({ onSuccess }: Props) {
 
         {/* Logo */}
         <div style={{ textAlign: 'center' }}>
-          <span style={{ color: ACCENT_BLUE, fontWeight: 700, fontSize: 22, fontFamily: 'monospace' }}>
+          <span id="auth-modal-title" style={{ color: ACCENT_BLUE, fontWeight: 700, fontSize: 22, fontFamily: 'monospace' }}>
             VoxelPlace
           </span>
           <p style={{ color: BORDER_COLOR, fontSize: 12, margin: '4px 0 0' }}>
@@ -99,8 +103,9 @@ export function AuthModal({ onSuccess }: Props) {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: BORDER_COLOR, fontSize: 12 }}>Pseudo</label>
+            <label htmlFor="auth-username" style={{ color: BORDER_COLOR, fontSize: 12 }}>Pseudo</label>
             <input
+              id="auth-username"
               style={inputStyle}
               value={username}
               onChange={e => setUsername(e.target.value)}
@@ -111,8 +116,9 @@ export function AuthModal({ onSuccess }: Props) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: BORDER_COLOR, fontSize: 12 }}>Mot de passe</label>
+            <label htmlFor="auth-password" style={{ color: BORDER_COLOR, fontSize: 12 }}>Mot de passe</label>
             <input
+              id="auth-password"
               style={inputStyle}
               type="password"
               value={password}

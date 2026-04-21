@@ -1,93 +1,80 @@
 # Diagrammes de Séquence — VoxelPlace
 
-## 1. Placement d'un pixel (Web)
+## 1. Connexion et auth
 
 ```mermaid
 sequenceDiagram
-    actor User as Joueur Web
-    participant Front as React (Frontend)
-    participant Socket as Socket.io Client
-    participant API as Fastify API
-    participant Redis as Redis
+    actor U as Joueur
+    participant M as AuthModal
+    participant A as API Fastify
+    participant D as PostgreSQL
 
-    User->>Front: Clic sur un pixel (x, y)
-    Front->>Front: Vérifier cooldown + connexion
-    Front->>Socket: emit pixel:place {x, y, colorId, username}
-    Front->>Front: Afficher cooldown (optimiste)
-
-    Socket->>API: pixel:place {x, y, colorId, username, source}
-    API->>API: validatePixel()
-    API->>API: checkRateLimit(username)
-    API->>Redis: setrange (grid buffer)
-    API->>Redis: hset (pixel metadata)
-    API-->>Socket: ack {ok: true, exempt?}
-    API->>Socket: broadcast pixel:update à tous les clients
-
-    Socket-->>Front: ack reçu
-    alt exempt
-        Front->>Front: Supprimer cooldown immédiatement
-    end
-
-    Socket->>Front: pixel:update {x, y, colorId, username}
-    Front->>Front: Mettre à jour la grille + lastPixel
+    U->>M: username + password
+    M->>A: POST /api/auth/login
+    A->>A: checkRateLimit(ip)
+    A->>D: SELECT users WHERE username = $1
+    A->>A: bcrypt.verify(password, hash)
+    A-->>M: {token JWT, username, role}
+    M->>M: localStorage → token, username
+    M->>M: setRole() → CanvasStore
 ```
 
-## 2. Connexion initiale
+---
+
+## 2. Placement d'un pixel (Web)
 
 ```mermaid
 sequenceDiagram
-    actor User as Joueur
-    participant Front as React
-    participant Socket as Socket.io
-    participant API as Fastify API
-    participant Redis as Redis
+    actor U as Joueur
+    participant P as Pixi.js
+    participant S as Socket.io
+    participant A as API Fastify
+    participant R as Redis
+    participant D as PostgreSQL
 
-    User->>Front: Ouvre l'application
-    Front->>Front: Lire username depuis localStorage
-    Front->>Socket: connect()
-    Socket->>API: WebSocket handshake
-    API->>Redis: loadGrid()
-    Redis-->>API: Buffer 4096 bytes
-    API-->>Socket: grid:init {grid, size, colors, players}
-    Socket-->>Front: grid:init reçu
-    Front->>Front: Initialiser Uint8Array + afficher canvas
+    U->>P: Clic (x, y)
+    P->>P: updatePixel() — optimiste GPU
+    P->>P: setCooldown(ms)
+    P->>S: emit pixel:place {x,y,colorId,username}
 
-    alt username défini
-        Front->>Socket: emit player:join {username, source: 'web'}
-        Socket->>API: player:join
-        API->>API: connectedPlayers.set(socketId, {username, source})
-        API->>Socket: broadcast players:update
+    S->>A: pixel:place
+    A->>A: validatePixel() + verifyToken()
+    A->>A: checkCooldown(username)
+
+    alt invalide ou cooldown
+        A-->>S: ack {error}
+        S-->>P: rollback pixel
+    else OK
+        A->>R: SETRANGE grid[index]
+        A->>D: INSERT pixel_history
+        A-->>S: ack {ok, cooldown}
+        A->>S: broadcast pixel:update → tous les clients
     end
 ```
+
+---
 
 ## 3. Placement d'un bloc Minecraft
 
 ```mermaid
 sequenceDiagram
     actor MC as Joueur Minecraft
-    participant Plugin as Plugin Paper
+    participant L as CanvasListener
     participant CM as CanvasManager
     participant SM as SocketManager
-    participant API as Fastify API
-    participant Redis as Redis
-    participant Clients as Tous les clients
+    participant A as API Fastify
 
-    MC->>Plugin: Clic droit avec béton coloré
-    Plugin->>CM: getCanvasCoords(block)
-    CM-->>Plugin: [px, py]
-    Plugin->>CM: materialToColorId(item)
-    CM-->>Plugin: colorId
-    Plugin->>CM: setPixel(px, py, colorId) [optimiste]
-    CM->>MC: Mise à jour immédiate du bloc
+    MC->>L: Clic droit sur canvas
+    L->>CM: getCanvasCoords(block)
+    L->>CM: materialToColorId(block)
+    L->>CM: setPixelLocal() — optimiste
+    L->>SM: emitPixelPlace(x, y, colorId)
+    SM->>A: emit pixel:place {source:'minecraft'}
+    A->>A: validate + persist
+    A-->>SM: ack
 
-    Plugin->>SM: emitPixelPlace(px, py, colorId, username)
-    SM->>API: emit pixel:place {source: 'minecraft'}
-    API->>Redis: Persister le pixel
-    API->>Clients: broadcast pixel:update
-    API-->>SM: ack {ok: true}
-
-    alt erreur (ack.error)
-        SM->>CM: setPixel(px, py, prevColorId) [revert]
-        CM->>MC: Restaurer le bloc précédent
+    alt erreur
+        SM->>CM: setPixelLocal(prevColorId) — revert
     end
+    A->>A: broadcast pixel:update → web + autres MC
 ```

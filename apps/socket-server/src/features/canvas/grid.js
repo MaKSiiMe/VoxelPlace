@@ -1,4 +1,4 @@
-const GRID_SIZE = 2048
+const GRID_SIZE = parseInt(process.env.GRID_SIZE ?? '2048', 10)
 const GRID_KEY = 'voxelplace:grid'
 const PIXELS_KEY = 'voxelplace:pixels'
 

@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react'
 import { BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED, ACCENT_GREEN } from '../theme'
 import { DEFAULT_COLORS } from '@features/canvas/store'
-
-const API           = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+import { API_URL as API } from '@shared/api'
 const ACCENT_YELLOW = '#e0af68'
 
 interface DashboardData {

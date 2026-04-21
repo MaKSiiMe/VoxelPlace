@@ -27,37 +27,64 @@ public class CanvasManager {
     // Cache local de la grille (colorId par pixel)
     private byte[] grid;
 
-    // colorId (0-7) → Material à afficher dans le monde
+    // colorId (0-15) → Material, aligné sur la palette serveur (palette.js)
+    // 0=#FFFFFF 1=#AAAAAA 2=#888888 3=#000000 4=#884422 5=#FF4444
+    // 6=#FF8800 7=#FFFF00 8=#88CC22 9=#00AA00 10=#00AAAA 11=#44AAFF
+    // 12=#4444FF 13=#AA00AA 14=#FF44FF 15=#FF88AA
     static final Material[] COLOR_MATERIALS = {
-        Material.WHITE_CONCRETE,    // 0 — blanc
-        Material.BLACK_CONCRETE,    // 1 — noir
-        Material.RED_CONCRETE,      // 2 — rouge
-        Material.GREEN_CONCRETE,    // 3 — vert
-        Material.BLUE_CONCRETE,     // 4 — bleu
-        Material.YELLOW_CONCRETE,   // 5 — jaune
-        Material.ORANGE_CONCRETE,   // 6 — orange
-        Material.PURPLE_CONCRETE,   // 7 — violet
+        Material.WHITE_CONCRETE,      //  0 — blanc
+        Material.LIGHT_GRAY_CONCRETE, //  1 — gris clair
+        Material.GRAY_CONCRETE,       //  2 — gris
+        Material.BLACK_CONCRETE,      //  3 — noir
+        Material.BROWN_CONCRETE,      //  4 — marron
+        Material.RED_CONCRETE,        //  5 — rouge
+        Material.ORANGE_CONCRETE,     //  6 — orange
+        Material.YELLOW_CONCRETE,     //  7 — jaune
+        Material.LIME_CONCRETE,       //  8 — vert clair
+        Material.GREEN_CONCRETE,      //  9 — vert
+        Material.CYAN_CONCRETE,       // 10 — cyan
+        Material.LIGHT_BLUE_CONCRETE, // 11 — bleu clair
+        Material.BLUE_CONCRETE,       // 12 — bleu
+        Material.PURPLE_CONCRETE,     // 13 — violet
+        Material.MAGENTA_CONCRETE,    // 14 — magenta
+        Material.PINK_CONCRETE,       // 15 — rose
     };
 
     // Material → colorId (accepte concrete ET wool)
     private static final Map<Material, Integer> MATERIAL_TO_COLOR = new HashMap<>();
     static {
-        MATERIAL_TO_COLOR.put(Material.WHITE_CONCRETE,   0);
-        MATERIAL_TO_COLOR.put(Material.WHITE_WOOL,       0);
-        MATERIAL_TO_COLOR.put(Material.BLACK_CONCRETE,   1);
-        MATERIAL_TO_COLOR.put(Material.BLACK_WOOL,       1);
-        MATERIAL_TO_COLOR.put(Material.RED_CONCRETE,     2);
-        MATERIAL_TO_COLOR.put(Material.RED_WOOL,         2);
-        MATERIAL_TO_COLOR.put(Material.GREEN_CONCRETE,   3);
-        MATERIAL_TO_COLOR.put(Material.GREEN_WOOL,       3);
-        MATERIAL_TO_COLOR.put(Material.BLUE_CONCRETE,    4);
-        MATERIAL_TO_COLOR.put(Material.BLUE_WOOL,        4);
-        MATERIAL_TO_COLOR.put(Material.YELLOW_CONCRETE,  5);
-        MATERIAL_TO_COLOR.put(Material.YELLOW_WOOL,      5);
-        MATERIAL_TO_COLOR.put(Material.ORANGE_CONCRETE,  6);
-        MATERIAL_TO_COLOR.put(Material.ORANGE_WOOL,      6);
-        MATERIAL_TO_COLOR.put(Material.PURPLE_CONCRETE,  7);
-        MATERIAL_TO_COLOR.put(Material.PURPLE_WOOL,      7);
+        MATERIAL_TO_COLOR.put(Material.WHITE_CONCRETE,        0);
+        MATERIAL_TO_COLOR.put(Material.WHITE_WOOL,            0);
+        MATERIAL_TO_COLOR.put(Material.LIGHT_GRAY_CONCRETE,   1);
+        MATERIAL_TO_COLOR.put(Material.LIGHT_GRAY_WOOL,       1);
+        MATERIAL_TO_COLOR.put(Material.GRAY_CONCRETE,         2);
+        MATERIAL_TO_COLOR.put(Material.GRAY_WOOL,             2);
+        MATERIAL_TO_COLOR.put(Material.BLACK_CONCRETE,        3);
+        MATERIAL_TO_COLOR.put(Material.BLACK_WOOL,            3);
+        MATERIAL_TO_COLOR.put(Material.BROWN_CONCRETE,        4);
+        MATERIAL_TO_COLOR.put(Material.BROWN_WOOL,            4);
+        MATERIAL_TO_COLOR.put(Material.RED_CONCRETE,          5);
+        MATERIAL_TO_COLOR.put(Material.RED_WOOL,              5);
+        MATERIAL_TO_COLOR.put(Material.ORANGE_CONCRETE,       6);
+        MATERIAL_TO_COLOR.put(Material.ORANGE_WOOL,           6);
+        MATERIAL_TO_COLOR.put(Material.YELLOW_CONCRETE,       7);
+        MATERIAL_TO_COLOR.put(Material.YELLOW_WOOL,           7);
+        MATERIAL_TO_COLOR.put(Material.LIME_CONCRETE,         8);
+        MATERIAL_TO_COLOR.put(Material.LIME_WOOL,             8);
+        MATERIAL_TO_COLOR.put(Material.GREEN_CONCRETE,        9);
+        MATERIAL_TO_COLOR.put(Material.GREEN_WOOL,            9);
+        MATERIAL_TO_COLOR.put(Material.CYAN_CONCRETE,        10);
+        MATERIAL_TO_COLOR.put(Material.CYAN_WOOL,            10);
+        MATERIAL_TO_COLOR.put(Material.LIGHT_BLUE_CONCRETE,  11);
+        MATERIAL_TO_COLOR.put(Material.LIGHT_BLUE_WOOL,      11);
+        MATERIAL_TO_COLOR.put(Material.BLUE_CONCRETE,        12);
+        MATERIAL_TO_COLOR.put(Material.BLUE_WOOL,            12);
+        MATERIAL_TO_COLOR.put(Material.PURPLE_CONCRETE,      13);
+        MATERIAL_TO_COLOR.put(Material.PURPLE_WOOL,          13);
+        MATERIAL_TO_COLOR.put(Material.MAGENTA_CONCRETE,     14);
+        MATERIAL_TO_COLOR.put(Material.MAGENTA_WOOL,         14);
+        MATERIAL_TO_COLOR.put(Material.PINK_CONCRETE,        15);
+        MATERIAL_TO_COLOR.put(Material.PINK_WOOL,            15);
     }
 
     public CanvasManager(VoxelPlacePlugin plugin) {
@@ -111,7 +138,7 @@ public class CanvasManager {
     public void setPixelLocal(int dx, int dz, int colorId) {
         if (!configured || dx < 0 || dx >= width || dz < 0 || dz >= height) return;
         grid[dz * width + dx] = (byte) colorId;
-        Material mat = COLOR_MATERIALS[colorId & 0x07];
+        Material mat = COLOR_MATERIALS[Math.min(colorId, COLOR_MATERIALS.length - 1)];
         Bukkit.getScheduler().runTask(plugin, () -> {
             Block block = world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz);
             if (block.getType() != mat) block.setType(mat, false);
@@ -139,7 +166,7 @@ public class CanvasManager {
                     int colorId   = serverIdx < gridData.length() ? gridData.optInt(serverIdx, 0) : 0;
                     grid[dz * width + dx] = (byte) colorId;
                     world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz)
-                         .setType(COLOR_MATERIALS[colorId & 0x07], false);
+                         .setType(COLOR_MATERIALS[Math.min(colorId, COLOR_MATERIALS.length - 1)], false);
                 }
             }
             plugin.getLogger().info("[Canvas] " + (width * height) + " blocs dessinés.");
@@ -165,7 +192,7 @@ public class CanvasManager {
                         int colorId = idx < windowData.length() ? windowData.optInt(idx, 0) : 0;
                         grid[idx]   = (byte) colorId;
                         world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz)
-                             .setType(COLOR_MATERIALS[colorId & 0x07], false);
+                             .setType(COLOR_MATERIALS[Math.min(colorId, COLOR_MATERIALS.length - 1)], false);
                     }
                 }
                 currentRow[0] = endRow;
