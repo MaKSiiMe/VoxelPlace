@@ -67,5 +67,5 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             docker compose down
-            docker system prune -f
             docker compose up --build -d
+            docker image prune -f
