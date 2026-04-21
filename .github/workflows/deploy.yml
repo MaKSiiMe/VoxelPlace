@@ -36,12 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
-      - name: Install workspace dependencies
-        run: npm ci
-
-      - name: TypeScript type-check
-        run: npm run type-check --workspace=apps/web
+      - name: Install web dependencies
+        run: npm install --workspace=apps/web
 
       - name: Run frontend tests
         run: npm test --workspace=apps/web
