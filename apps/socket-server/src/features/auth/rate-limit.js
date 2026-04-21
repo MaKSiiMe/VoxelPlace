@@ -21,4 +21,4 @@ setInterval(() => {
   for (const [ip, entry] of attempts) {
     if (entry.resetAt <= now) attempts.delete(ip)
   }
-}, 300_000)
+}, 300_000).unref()
