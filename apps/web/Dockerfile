@@ -31,7 +31,7 @@ COPY . .
 RUN npm install --ignore-scripts
 
 # Variables nécessaires au build Next.js
-ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_API_URL=http://localhost
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build uniquement l'app web via Turbo

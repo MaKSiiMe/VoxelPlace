@@ -1,5 +1,17 @@
 services:
 
+  voxelplace-nginx:
+    image: nginx:alpine
+    container_name: voxelplace-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - voxelplace-web
+      - voxelplace-api
+
   voxelplace-db:
     image: postgres:16-alpine
     container_name: voxelplace-db
@@ -25,8 +37,6 @@ services:
       dockerfile: Dockerfile
     container_name: voxelplace-api
     restart: always
-    ports:
-      - "3001:3001"
     environment:
       PORT:            "3001"
       REDIS_URL:       "redis://voxelplace-redis:6379"
@@ -43,11 +53,9 @@ services:
       context: .
       dockerfile: ./apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:3001}"
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost}"
     container_name: voxelplace-web
     restart: always
-    ports:
-      - "80:3000"
     environment:
       PORT: "3000"
     depends_on:
