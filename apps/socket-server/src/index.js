@@ -233,14 +233,6 @@ fastify.get('/api/pixel/:x/:y', async (req, reply) => {
 
 const lastPlaced = new Map()
 
-// Cooldown en ms par rôle
-const ROLE_COOLDOWNS = {
-  user:       60_000,   // 1 minute
-  superuser:   1_000,   // 1 seconde
-  admin:       5_000,   // 5 secondes
-  superadmin:      0,   // aucun cooldown
-}
-
 // Réduction streak pour les users normaux : 0h=60s | 5h=45s | 10h=30s | 20h=20s
 function cooldownForStreak(streakHours) {
   if (streakHours >= 20) return 20_000
@@ -270,15 +262,22 @@ async function getUserCached(username) {
   }
 }
 
+import { ROLE_COOLDOWNS, SUPERUSER_PREFIXES } from '@voxelplace/types/roles'
+
 // Retourne le cooldown actif en ms (0 = peut placer)
 async function checkRateLimit(username) {
   if (TEST_USERNAMES.has(username)) return { wait: 0, cooldownMs: 0 }
 
   const { role, streak } = await getUserCached(username)
 
-  let cooldownMs = ROLE_COOLDOWNS[role] ?? ROLE_COOLDOWNS.user
+  // Si le pseudo a un préfixe superuser mais que la DB n'est pas encore à jour, on applique quand même le bon cooldown
+  const effectiveRole = (role === 'user' && SUPERUSER_PREFIXES.some(p => username.toLowerCase().startsWith(p)))
+    ? 'superuser'
+    : role
+
+  let cooldownMs = ROLE_COOLDOWNS[effectiveRole] ?? ROLE_COOLDOWNS.user
   // Les users normaux bénéficient de la réduction par streak
-  if (role === 'user') cooldownMs = cooldownForStreak(streak)
+  if (effectiveRole === 'user') cooldownMs = cooldownForStreak(streak)
   // superadmin : aucun cooldown
   if (cooldownMs === 0) return { wait: 0, cooldownMs: 0 }
 

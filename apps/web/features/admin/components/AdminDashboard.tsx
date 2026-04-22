@@ -180,8 +180,8 @@ export function AdminDashboard() {
           <tbody>
             {[
               { role: 'user',       color: BORDER_COLOR,  cd: '60s',  how: 'Compte standard' },
-              { role: 'superuser',  color: ACCENT_YELLOW, cd: '1s',   how: 'Pseudo hbtn_* / tm_* / pt_* ou promotion manuelle' },
-              { role: 'admin',      color: ACCENT_BLUE,   cd: '5s',   how: 'Attribution manuelle' },
+              { role: 'superuser',  color: ACCENT_YELLOW, cd: '0s',   how: 'Pseudo hbtn_* / tm_* / pt_* ou promotion manuelle' },
+              { role: 'admin',      color: ACCENT_BLUE,   cd: '0s',   how: 'Attribution manuelle' },
               { role: 'superadmin', color: ACCENT_RED,    cd: '0s',   how: 'Mot de passe admin' },
             ].map(({ role, color, cd, how }) => (
               <tr key={role}>

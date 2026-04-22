@@ -28,9 +28,9 @@ describe('DEFAULT_COLORS', () => {
 })
 
 describe('ROLE_COOLDOWNS', () => {
-  test('user → 60 secondes', ()      => expect(ROLE_COOLDOWNS.user).toBe(60_000))
-  test('superuser → 1 seconde', ()   => expect(ROLE_COOLDOWNS.superuser).toBe(1_000))
-  test('admin → 5 secondes', ()      => expect(ROLE_COOLDOWNS.admin).toBe(5_000))
+  test('user → 60 secondes', ()       => expect(ROLE_COOLDOWNS.user).toBe(60_000))
+  test('superuser → pas de délai', () => expect(ROLE_COOLDOWNS.superuser).toBe(0))
+  test('admin → pas de délai', ()     => expect(ROLE_COOLDOWNS.admin).toBe(0))
   test('superadmin → pas de délai', () => expect(ROLE_COOLDOWNS.superadmin).toBe(0))
 })
 

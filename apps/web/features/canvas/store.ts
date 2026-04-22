@@ -1,16 +1,10 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { socket } from '@features/realtime/socket'
+import { ROLE_COOLDOWNS, type UserRole } from '@voxelplace/types'
 
-export type UserRole = 'user' | 'superuser' | 'admin' | 'superadmin'
-
-// Cooldown optimiste côté client — doit correspondre au serveur
-export const ROLE_COOLDOWNS: Record<UserRole, number> = {
-  user:        60_000,
-  superuser:    1_000,
-  admin:        5_000,
-  superadmin:       0,
-}
+export type { UserRole }
+export { ROLE_COOLDOWNS }
 
 export const DEFAULT_COLORS = [
   '#FFFFFF', // 0  blanc
