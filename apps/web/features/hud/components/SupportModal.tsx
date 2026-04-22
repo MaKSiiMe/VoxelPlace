@@ -8,7 +8,7 @@ interface Props {
 
 const ROLE_ROWS = [
   { role: 'user',       color: BORDER_COLOR,  cooldown: '60s',  desc: 'Compte standard' },
-  { role: 'superuser',  color: '#e0af68',     cooldown: '1s',   desc: 'Beta testeur (hbtn_*)' },
+  { role: 'superuser',  color: '#e0af68',     cooldown: '1s',   desc: 'Beta testeur (hbtn_* / tm_* / pt_*)' },
   { role: 'admin',      color: ACCENT_BLUE,   cooldown: '5s',   desc: 'Modérateur' },
   { role: 'superadmin', color: ACCENT_RED,    cooldown: '0s',   desc: 'Accès total' },
 ]

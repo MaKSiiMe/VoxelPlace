@@ -52,8 +52,9 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
 
     try {
       const passwordHash = await hashPassword(password)
-      // Les pseudos hbtn_* sont automatiquement superuser (beta testeurs)
-      const role = clean.toLowerCase().startsWith('hbtn_') ? 'superuser' : 'user'
+      const SUPERUSER_PREFIXES = ['hbtn_', 'tm_', 'pt_']
+      const isSuperuser = SUPERUSER_PREFIXES.some(p => clean.toLowerCase().startsWith(p))
+      const role = isSuperuser ? 'superuser' : 'user'
       const result = await pool.query(
         'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
         [clean, passwordHash, role]
@@ -99,8 +100,10 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         return reply.status(401).send({ error: 'Identifiants incorrects' })
       }
 
-      // Promotion automatique hbtn_* → superuser (si créé avant la règle)
-      if (user.username.toLowerCase().startsWith('hbtn_') && user.role === 'user') {
+      // Promotion automatique hbtn_* / tm_* / pt_* → superuser (si créé avant la règle)
+      const SUPERUSER_PREFIXES = ['hbtn_', 'tm_', 'pt_']
+      const shouldPromote = SUPERUSER_PREFIXES.some(p => user.username.toLowerCase().startsWith(p))
+      if (shouldPromote && user.role === 'user') {
         await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['superuser', user.id])
         user.role = 'superuser'
       }

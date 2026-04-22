@@ -138,7 +138,7 @@ export function AdminDashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ color: '#c0caf5', fontWeight: 700, fontSize: 15 }}>Gestion des rôles</span>
           <span style={{ color: BORDER_COLOR, fontSize: 13 }}>
-            Promouvoir tous les comptes <code style={{ color: ACCENT_YELLOW, fontFamily: 'monospace' }}>hbtn_*</code> en superuser.
+            Promouvoir tous les comptes hbtn_* / tm_* / pt_* en superuser.
           </span>
         </div>
 
@@ -150,7 +150,7 @@ export function AdminDashboard() {
             onMouseEnter={e => { if (!promoteLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_YELLOW}44` }}
             onMouseLeave={e => { if (!promoteLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_YELLOW}22` }}
           >
-            {promoteLoading ? '...' : 'Promouvoir hbtn_* → superuser'}
+            {promoteLoading ? '...' : 'Promouvoir hbtn_* / tm_* / pt_* → superuser'}
           </button>
           {promoteResult && (
             <span style={{
@@ -180,7 +180,7 @@ export function AdminDashboard() {
           <tbody>
             {[
               { role: 'user',       color: BORDER_COLOR,  cd: '60s',  how: 'Compte standard' },
-              { role: 'superuser',  color: ACCENT_YELLOW, cd: '1s',   how: 'Pseudo hbtn_* ou promotion manuelle' },
+              { role: 'superuser',  color: ACCENT_YELLOW, cd: '1s',   how: 'Pseudo hbtn_* / tm_* / pt_* ou promotion manuelle' },
               { role: 'admin',      color: ACCENT_BLUE,   cd: '5s',   how: 'Attribution manuelle' },
               { role: 'superadmin', color: ACCENT_RED,    cd: '0s',   how: 'Mot de passe admin' },
             ].map(({ role, color, cd, how }) => (
