@@ -2,11 +2,17 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json ./
+# Package partagé (constants ROLE_COOLDOWNS, SUPERUSER_PREFIXES)
+COPY packages/types/package.json ./packages/types/
+COPY packages/types/src/roles.js ./packages/types/src/
+
+# Backend
+COPY apps/socket-server/package.json ./apps/socket-server/
+WORKDIR /app/apps/socket-server
 RUN npm install --omit=dev
 
-COPY src/     ./src/
-COPY scripts/ ./scripts/
+COPY apps/socket-server/src/     ./src/
+COPY apps/socket-server/scripts/ ./scripts/
 
 EXPOSE 3001
 

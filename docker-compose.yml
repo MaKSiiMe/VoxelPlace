@@ -33,8 +33,8 @@ services:
 
   voxelplace-api:
     build:
-      context: ./apps/socket-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/socket-server/Dockerfile
     container_name: voxelplace-api
     restart: always
     environment:
