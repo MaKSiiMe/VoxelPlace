@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: voxelplace-plugin
-          path: apps/game-bridges/minecraft/target/VoxelPlace-*.jar
+          path: apps/game-bridges/minecraft/target/voxelplace-minecraft-*.jar
           retention-days: 7
 
   deploy:
@@ -92,7 +92,7 @@ jobs:
           host: 100.124.153.20
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: plugin/VoxelPlace-*.jar
+          source: plugin/voxelplace-minecraft-*.jar
           target: /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/
           strip_components: 1
 
