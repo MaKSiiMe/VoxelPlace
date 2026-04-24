@@ -92,24 +92,20 @@ jobs:
           name: voxelplace-plugin
           path: plugin/
 
-      - name: Deploy plugin via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 100.124.153.20
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: plugin/VoxelPlace.jar
-          target: /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/
-          strip_components: 1
+      - name: Encode JAR as base64
+        id: encode
+        run: |
+          echo "jar_b64=$(base64 -w 0 plugin/VoxelPlace.jar)" >> $GITHUB_OUTPUT
 
-      - name: Deploy app + reload Minecraft plugin
+      - name: Deploy app + plugin
         uses: appleboy/ssh-action@v1
         with:
           host: 100.124.153.20
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: RCON_PASSWORD
+          envs: JAR_B64,RCON_PASSWORD
           script: |
+            echo "$JAR_B64" | base64 -d > /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
             cd /opt/voxelplace
             git fetch origin
             git reset --hard origin/main
@@ -117,4 +113,5 @@ jobs:
             docker image prune -f
             docker exec minecraft-paper rcon-cli --password "$RCON_PASSWORD" reload confirm
         env:
+          JAR_B64: ${{ steps.encode.outputs.jar_b64 }}
           RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
