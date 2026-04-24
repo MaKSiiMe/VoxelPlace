@@ -393,7 +393,6 @@ io.on('connection', async (socket) => {
     const pixel = validatePixel(data)
     if (!pixel) return ack?.({ error: 'Données invalides' })
 
-    console.log(`[pixel:place] source="${pixel.source}" username="${pixel.username}"`)
     const { wait, cooldownMs } = pixel.source === 'minecraft'
       ? { wait: 0, cooldownMs: 0 }
       : await checkRateLimit(pixel.username)

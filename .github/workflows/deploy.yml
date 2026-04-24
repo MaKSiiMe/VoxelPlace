@@ -72,7 +72,8 @@ jobs:
             cd /opt/voxelplace
             git fetch origin
             git reset --hard origin/main
-            docker compose up --build -d
+            docker compose build --no-cache voxelplace-api
+            docker compose up -d
             docker image prune -f
             mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
             sudo cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
