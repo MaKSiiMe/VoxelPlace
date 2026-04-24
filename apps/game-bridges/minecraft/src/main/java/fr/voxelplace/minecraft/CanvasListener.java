@@ -145,9 +145,8 @@ public class CanvasListener implements Listener {
         int dz      = coords[1];
         int colorId = canvasManager.getColorAt(dx, dz) & 0x07;
 
-        int[] math = canvasManager.localToMath(dx, dz);
         var bar = Component.text()
-            .append(Component.text("(" + math[0] + ", " + math[1] + ")", NamedTextColor.WHITE))
+            .append(Component.text("(" + dx + ", " + dz + ")", NamedTextColor.WHITE))
             .append(Component.text("  ■  ", COLOR_CHAT[colorId]))
             .append(Component.text(COLOR_NAMES[colorId], COLOR_CHAT[colorId]))
             .build();
