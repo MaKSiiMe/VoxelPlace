@@ -50,34 +50,9 @@ jobs:
       - name: Run frontend tests
         run: npm test --workspace=apps/web
 
-  build-minecraft:
-    name: Build Minecraft plugin
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: Build JAR
-        working-directory: apps/game-bridges/minecraft
-        run: mvn clean package -q
-
-      - name: Upload JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: voxelplace-plugin
-          path: apps/game-bridges/minecraft/target/VoxelPlace.jar
-          if-no-files-found: error
-          retention-days: 7
-
   deploy:
     name: Deploy
-    needs: [test-backend, test-frontend, build-minecraft]
+    needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
 
     steps:
@@ -86,32 +61,22 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Download Minecraft plugin JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: voxelplace-plugin
-          path: plugin/
-
-      - name: Encode JAR as base64
-        id: encode
-        run: |
-          echo "jar_b64=$(base64 -w 0 plugin/VoxelPlace.jar)" >> $GITHUB_OUTPUT
-
       - name: Deploy app + plugin
         uses: appleboy/ssh-action@v1
         with:
           host: 100.124.153.20
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: JAR_B64,RCON_PASSWORD
+          envs: RCON_PASSWORD
           script: |
-            echo "$JAR_B64" | base64 -d > /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
             cd /opt/voxelplace
             git fetch origin
             git reset --hard origin/main
             docker compose up --build -d
             docker image prune -f
+            mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
+            cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
+              /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
             docker exec minecraft-paper rcon-cli --password "$RCON_PASSWORD" reload confirm
         env:
-          JAR_B64: ${{ steps.encode.outputs.jar_b64 }}
           RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
