@@ -2,6 +2,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Workspace root (requis pour résoudre @voxelplace/types)
+COPY package.json ./
+COPY package-lock.json ./
+
 # Package partagé (constants ROLE_COOLDOWNS, SUPERUSER_PREFIXES)
 COPY packages/types/package.json ./packages/types/
 COPY packages/types/src/roles.js ./packages/types/src/
