@@ -17,7 +17,8 @@ public class SocketManager {
     private final CanvasManager    canvasManager;
 
     private Socket  socket;
-    private boolean connected = false;
+    private boolean connected   = false;
+    private boolean gridLoaded  = false;
     private String  serverUrl;
 
     public SocketManager(VoxelPlacePlugin plugin, CanvasManager canvasManager) {
@@ -59,9 +60,14 @@ public class SocketManager {
                 plugin.getLogger().warning("[Socket] Erreur de connexion : " + msg);
             });
 
-            // Grille à la connexion — on ignore le payload complet (trop grand)
-            // et on charge seulement la fenêtre via l'endpoint HTTP dédié
-            socket.on("grid:init", args -> requestGridRefresh());
+            // Charge la grille une seule fois au démarrage du plugin.
+            // Les reconnexions ne rechargent pas la grille pour éviter d'écraser les pixels récents.
+            socket.on("grid:init", args -> {
+                if (!gridLoaded) {
+                    gridLoaded = true;
+                    requestGridRefresh();
+                }
+            });
 
             // Mise à jour d'un pixel (broadcast de tous les clients)
             socket.on("pixel:update", args -> {
@@ -85,7 +91,8 @@ public class SocketManager {
             socket.disconnect();
             socket.off();
         }
-        connected = false;
+        connected  = false;
+        gridLoaded = false;
     }
 
     // ── Émission pixel:place ────────────────────────────────────────────────

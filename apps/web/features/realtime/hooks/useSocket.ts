@@ -10,11 +10,16 @@ export function useSocket(username: string) {
   useEffect(() => {
     if (!username) return
 
+    let gridLoaded = false
+
     socket.connect()
     socket.emit('player:join', { username, source: 'web' })
 
     // colors ignoré — le client utilise sa propre palette (DEFAULT_COLORS dans store.ts)
+    // N'applique grid:init qu'une seule fois — les reconnexions ne doivent pas écraser le canvas
     socket.on('grid:init', ({ grid, size, players }) => {
+      if (gridLoaded) return
+      gridLoaded = true
       setGrid(new Uint8Array(grid))
       setGridSize(size)
       if (players) setPlayers(players)
@@ -29,6 +34,7 @@ export function useSocket(username: string) {
     })
 
     socket.on('canvas:reload', () => {
+      gridLoaded = false
       socket.emit('grid:request')
     })
 
