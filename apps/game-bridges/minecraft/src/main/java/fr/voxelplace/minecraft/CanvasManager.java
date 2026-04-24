@@ -150,7 +150,7 @@ public class CanvasManager {
      * Utilisé par les événements socket pixel:update.
      */
     public void setPixelFromGrid(int gridX, int gridY, int colorId) {
-        setPixelLocal(gridX - offsetX, gridY - offsetZ, colorId);
+        setPixelLocal(gridX - offsetX, GRID_SIZE - 1 - gridY - offsetZ, colorId);
     }
 
     /**
@@ -162,7 +162,7 @@ public class CanvasManager {
         Bukkit.getScheduler().runTask(plugin, () -> {
             for (int dz = 0; dz < height; dz++) {
                 for (int dx = 0; dx < width; dx++) {
-                    int serverIdx = (offsetZ + dz) * GRID_SIZE + (offsetX + dx);
+                    int serverIdx = (GRID_SIZE - 1 - offsetZ - dz) * GRID_SIZE + (offsetX + dx);
                     int colorId   = serverIdx < gridData.length() ? gridData.optInt(serverIdx, 0) : 0;
                     grid[dz * width + dx] = (byte) colorId;
                     world.getBlockAt(cornerX + dx, cornerY, cornerZ + dz)
@@ -188,7 +188,7 @@ public class CanvasManager {
                 int endRow = Math.min(currentRow[0] + ROWS_PER_TICK, height);
                 for (int dz = currentRow[0]; dz < endRow; dz++) {
                     for (int dx = 0; dx < width; dx++) {
-                            int serverRow = dz;
+                            int serverRow = (height - 1 - dz);
                         int idx       = serverRow * width + dx;
                         int colorId   = idx < windowData.length() ? windowData.optInt(idx, 0) : 0;
                         grid[dz * width + dx] = (byte) colorId;
@@ -253,7 +253,7 @@ public class CanvasManager {
     /** Convertit des coords locales (dx,dz) en coordonnées grille (0-2047).
      *  L'axe Z Minecraft (sud+) est inversé pour correspondre à Y web (nord+). */
     public int[] localToGrid(int dx, int dz) {
-        return new int[]{ offsetX + dx, offsetZ + dz };
+        return new int[]{ offsetX + dx, GRID_SIZE - 1 - offsetZ - dz };
     }
 
     public boolean isConfigured() { return configured; }
