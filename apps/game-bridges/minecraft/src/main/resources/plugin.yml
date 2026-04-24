@@ -8,9 +8,8 @@ description: Canvas collaboratif cross-platform — inspiré de r/place
 commands:
   vp:
     description: Commandes VoxelPlace
-    usage: /vp <setup|fill|reload|info>
+    usage: /vp <setup|fill|reload|info|tutorial>
     aliases: [ voxelplace ]
-    permission: voxelplace.admin
 
 permissions:
   voxelplace.admin:

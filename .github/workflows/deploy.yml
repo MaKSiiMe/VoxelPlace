@@ -45,9 +45,33 @@ jobs:
       - name: Run frontend tests
         run: npm test --workspace=apps/web
 
+  build-minecraft:
+    name: Build Minecraft plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build JAR
+        working-directory: apps/game-bridges/minecraft
+        run: mvn clean package -q
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxelplace-plugin
+          path: apps/game-bridges/minecraft/target/VoxelPlace-*.jar
+          retention-days: 7
+
   deploy:
     name: Deploy
-    needs: [test-backend, test-frontend]
+    needs: [test-backend, test-frontend, build-minecraft]
     runs-on: ubuntu-latest
 
     steps:
@@ -56,15 +80,35 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Deploy via SSH
+      - name: Download Minecraft plugin JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: voxelplace-plugin
+          path: plugin/
+
+      - name: Deploy plugin via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 100.124.153.20
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: plugin/VoxelPlace-*.jar
+          target: /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/
+          strip_components: 1
+
+      - name: Deploy app + reload Minecraft plugin
         uses: appleboy/ssh-action@v1
         with:
           host: 100.124.153.20
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: RCON_PASSWORD
           script: |
             cd /opt/voxelplace
             git fetch origin
             git reset --hard origin/main
             docker compose up --build -d
             docker image prune -f
+            docker exec minecraft-paper rcon-cli --password "$RCON_PASSWORD" reload confirm
+        env:
+          RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}

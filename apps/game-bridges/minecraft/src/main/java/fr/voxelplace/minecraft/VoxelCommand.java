@@ -15,11 +15,13 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
     private final VoxelPlacePlugin plugin;
     private final CanvasManager    canvasManager;
     private final SocketManager    socketManager;
+    private final TutorialManager  tutorialManager;
 
-    public VoxelCommand(VoxelPlacePlugin plugin, CanvasManager cm, SocketManager sm) {
-        this.plugin        = plugin;
-        this.canvasManager = cm;
-        this.socketManager = sm;
+    public VoxelCommand(VoxelPlacePlugin plugin, CanvasManager cm, SocketManager sm, TutorialManager tm) {
+        this.plugin          = plugin;
+        this.canvasManager   = cm;
+        this.socketManager   = sm;
+        this.tutorialManager = tm;
     }
 
     @Override
@@ -27,13 +29,14 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) { sendHelp(sender); return true; }
 
         switch (args[0].toLowerCase()) {
-            case "setup"  -> cmdSetup(sender);
-            case "offset" -> cmdOffset(sender, args);
-            case "fill"   -> cmdFill(sender);
-            case "reload" -> cmdReload(sender);
-            case "info"   -> cmdInfo(sender);
-            case "help"   -> sendHelp(sender);
-            default       -> sendHelp(sender);
+            case "setup"    -> cmdSetup(sender);
+            case "offset"   -> cmdOffset(sender, args);
+            case "fill"     -> cmdFill(sender);
+            case "reload"   -> cmdReload(sender);
+            case "info"     -> cmdInfo(sender);
+            case "tutorial" -> cmdTutorial(sender);
+            case "help"     -> sendHelp(sender);
+            default         -> sendHelp(sender);
         }
         return true;
     }
@@ -156,11 +159,21 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void cmdTutorial(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("Cette commande est réservée aux joueurs en jeu.");
+            return;
+        }
+        tutorialManager.resetTutorial(player);
+        tutorialManager.startTutorial(player);
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(Component.text("─── VoxelPlace ──────────────────────", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  Commandes joueur", NamedTextColor.YELLOW));
-        sender.sendMessage(help("/vp help", "Affiche cette aide"));
-        sender.sendMessage(help("/vp info", "État de la connexion et du canvas"));
+        sender.sendMessage(help("/vp help",     "Affiche cette aide"));
+        sender.sendMessage(help("/vp info",     "État de la connexion et du canvas"));
+        sender.sendMessage(help("/vp tutorial", "Rejoue le tutoriel de bienvenue"));
 
         if (sender.isOp()) {
             sender.sendMessage(Component.text("  Commandes admin (OP)", NamedTextColor.RED));
@@ -186,7 +199,7 @@ public class VoxelCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("help", "info", "setup", "offset", "fill", "reload").stream()
+            return List.of("help", "info", "tutorial", "setup", "offset", "fill", "reload").stream()
                 .filter(s -> s.startsWith(args[0].toLowerCase()))
                 .toList();
         }

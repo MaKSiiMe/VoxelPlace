@@ -243,9 +243,10 @@ public class CanvasManager {
         plugin.saveConfig();
     }
 
-    /** Convertit des coords locales (dx,dz) en coordonnées mathématiques (-1024 à +1023). */
+    /** Convertit des coords locales (dx,dz) en coordonnées mathématiques (-1024 à +1023).
+     *  Y est négativé : Z+ (sud Minecraft) = Y- (bas sur le site web). */
     public int[] localToMath(int dx, int dz) {
-        return new int[]{ offsetX + dx - GRID_HALF, offsetZ + dz - GRID_HALF };
+        return new int[]{ offsetX + dx - GRID_HALF, GRID_HALF - offsetZ - dz };
     }
 
     /** Convertit des coords locales (dx,dz) en coordonnées grille (0-2047). */
