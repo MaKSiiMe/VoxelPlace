@@ -77,6 +77,6 @@ jobs:
             mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
             sudo cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
               /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
-            docker exec minecraft-paper rcon-cli --password "$RCON_PASSWORD" reload confirm
+            docker restart minecraft-paper
         env:
           RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
