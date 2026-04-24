@@ -1,5 +1,5 @@
 # URL du serveur VoxelPlace (sans trailing slash)
-server-url: "https://s56c-srv.tailedae07.ts.net"
+server-url: "http://voxelplace-api:3001"
 
 # Préfixe affiché dans le chat
 prefix: "&6[VoxelPlace]&r "
