@@ -70,7 +70,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: voxelplace-plugin
-          path: apps/game-bridges/minecraft/target/voxelplace-minecraft-*.jar
+          path: apps/game-bridges/minecraft/target/VoxelPlace.jar
+          if-no-files-found: error
           retention-days: 7
 
   deploy:
@@ -96,7 +97,7 @@ jobs:
           host: 100.124.153.20
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: plugin/voxelplace-minecraft-*.jar
+          source: plugin/VoxelPlace.jar
           target: /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/
           strip_components: 1
 
