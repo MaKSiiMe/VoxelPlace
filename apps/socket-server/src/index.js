@@ -393,7 +393,9 @@ io.on('connection', async (socket) => {
     const pixel = validatePixel(data)
     if (!pixel) return ack?.({ error: 'Données invalides' })
 
-    const { wait, cooldownMs } = await checkRateLimit(pixel.username)
+    const { wait, cooldownMs } = pixel.source === 'minecraft'
+      ? { wait: 0, cooldownMs: 0 }
+      : await checkRateLimit(pixel.username)
     if (wait > 0) return ack?.({ error: `Trop vite ! Attends ${Math.ceil(wait / 1000)}s.`, cooldown: wait })
 
     // Vérifie si le joueur est banni
