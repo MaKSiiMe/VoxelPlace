@@ -75,9 +75,14 @@ jobs:
             docker compose build --no-cache voxelplace-api
             docker compose up -d
             docker image prune -f
-            mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
-            sudo cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
-              /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
-            docker restart minecraft-paper
+            if git diff HEAD@{1} HEAD --name-only | grep -q '^apps/game-bridges/minecraft/'; then
+              mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
+              sudo cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
+                /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
+              docker restart minecraft-paper
+              echo "[deploy] Plugin Minecraft mis à jour."
+            else
+              echo "[deploy] Aucun changement Minecraft, redémarrage ignoré."
+            fi
         env:
           RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
