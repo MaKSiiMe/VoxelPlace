@@ -41,12 +41,12 @@ const DEFAULT_SCALE  = 4
 const GRID_HALF      = 1024
 
 function centerOnOrigin(app: Application, sprite: Sprite) {
-  sprite.scale.x =  DEFAULT_SCALE
-  sprite.scale.y = -DEFAULT_SCALE
+  sprite.scale.x = DEFAULT_SCALE
+  sprite.scale.y = DEFAULT_SCALE
   const cx = Math.round(app.renderer.width  / 2)
   const cy = Math.round(app.renderer.height / 2)
   sprite.x = cx - GRID_HALF * DEFAULT_SCALE
-  sprite.y = cy + GRID_HALF * DEFAULT_SCALE
+  sprite.y = cy - GRID_HALF * DEFAULT_SCALE
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ export function usePixiCanvas(
       registerNavigate((gx, gy) => {
         const S = gridSprite.scale.x
         gridSprite.x = app.renderer.width  / 2 - gx * S
-        gridSprite.y = app.renderer.height / 2 + gy * S
+        gridSprite.y = app.renderer.height / 2 - gy * S
       })
 
       // ── Grid overlay — manipulé directement en DOM via data-attribute ──
@@ -174,10 +174,10 @@ export function usePixiCanvas(
         const { gridSize, setHoveredPixel, setCursorScreenPos } = useCanvasStore.getState()
 
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          setHoveredPixel({ x: gx - GRID_HALF, y: GRID_HALF - 1 - gy })
+          setHoveredPixel({ x: gx - GRID_HALF, y: gy - GRID_HALF })
           const scale   = gridSprite.scale.x
           const screenX = gridSprite.x + gx * scale
-          const screenY = gridSprite.y - (gy + 1) * scale
+          const screenY = gridSprite.y + gy * scale
           setCursorScreenPos({ x: screenX, y: screenY })
         } else {
           setHoveredPixel(null)
@@ -233,11 +233,11 @@ export function usePixiCanvas(
         const oldScale = gridSprite.scale.x
         const newScale = Math.max(MIN, Math.min(MAX, oldScale * factor))
         const lx = (mouseX - gridSprite.x) / oldScale
-        const ly = (gridSprite.y - mouseY) / oldScale
-        gridSprite.scale.x =  newScale
-        gridSprite.scale.y = -newScale
+        const ly = (mouseY - gridSprite.y) / oldScale
+        gridSprite.scale.x = newScale
+        gridSprite.scale.y = newScale
         gridSprite.x = mouseX - lx * newScale
-        gridSprite.y = mouseY + ly * newScale
+        gridSprite.y = mouseY - ly * newScale
         useCanvasStore.getState().setPixelSize(newScale)
       }
       const onContextMenu = (e: MouseEvent) => e.preventDefault()
