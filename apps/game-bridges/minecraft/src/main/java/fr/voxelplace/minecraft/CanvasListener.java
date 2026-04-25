@@ -21,18 +21,29 @@ public class CanvasListener implements Listener {
     private final SocketManager    socketManager;
 
     private static final String[] COLOR_NAMES = {
-        "Blanc", "Noir", "Rouge", "Vert", "Bleu", "Jaune", "Orange", "Violet"
+        "Blanc",      "Gris clair", "Gris",    "Noir",
+        "Marron",     "Rouge",      "Orange",  "Jaune",
+        "Vert clair", "Vert",       "Cyan",    "Bleu clair",
+        "Bleu",       "Violet",     "Magenta", "Rose",
     };
 
     private static final TextColor[] COLOR_CHAT = {
-        TextColor.color(0xFFFFFF), // blanc
-        TextColor.color(0x555555), // noir
-        TextColor.color(0xB02E26), // rouge
-        TextColor.color(0x5E7C16), // vert
-        TextColor.color(0x3C44AA), // bleu
-        TextColor.color(0xFED83D), // jaune
-        TextColor.color(0xF9801D), // orange
-        TextColor.color(0x8932B8), // violet
+        TextColor.color(0xFFFFFF), // 0  blanc
+        TextColor.color(0xAAAAAA), // 1  gris clair
+        TextColor.color(0x888888), // 2  gris
+        TextColor.color(0x000000), // 3  noir
+        TextColor.color(0x884422), // 4  marron
+        TextColor.color(0xFF4444), // 5  rouge
+        TextColor.color(0xFF8800), // 6  orange
+        TextColor.color(0xFFFF00), // 7  jaune
+        TextColor.color(0x88CC22), // 8  vert clair
+        TextColor.color(0x00AA00), // 9  vert
+        TextColor.color(0x00AAAA), // 10 cyan
+        TextColor.color(0x44AAFF), // 11 bleu clair
+        TextColor.color(0x4444FF), // 12 bleu
+        TextColor.color(0xAA00AA), // 13 violet
+        TextColor.color(0xFF44FF), // 14 magenta
+        TextColor.color(0xFF88AA), // 15 rose
     };
 
     public CanvasListener(VoxelPlacePlugin plugin, CanvasManager cm, SocketManager sm) {
@@ -143,10 +154,11 @@ public class CanvasListener implements Listener {
 
         int dx      = coords[0];
         int dz      = coords[1];
-        int colorId = canvasManager.getColorAt(dx, dz) & 0x07;
+        int colorId = canvasManager.getColorAt(dx, dz) & 0x0F;
 
+        int[] math = canvasManager.localToMath(dx, dz);
         var bar = Component.text()
-            .append(Component.text("(" + dx + ", " + dz + ")", NamedTextColor.WHITE))
+            .append(Component.text("(" + math[0] + ", " + math[1] + ")", NamedTextColor.WHITE))
             .append(Component.text("  ■  ", COLOR_CHAT[colorId]))
             .append(Component.text(COLOR_NAMES[colorId], COLOR_CHAT[colorId]))
             .build();

@@ -174,7 +174,7 @@ export function usePixiCanvas(
         const { gridSize, setHoveredPixel, setCursorScreenPos } = useCanvasStore.getState()
 
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          setHoveredPixel({ x: gx - GRID_HALF, y: GRID_HALF - 1 - gy })
+          setHoveredPixel({ x: gx - GRID_HALF, y: GRID_HALF - gy })
           const scale   = gridSprite.scale.x
           const screenX = gridSprite.x + gx * scale
           const screenY = gridSprite.y - (gy + 1) * scale
