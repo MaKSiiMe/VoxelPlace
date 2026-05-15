@@ -71,12 +71,20 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
             Administration
           </p>
 
+          <label
+            htmlFor="admin-password"
+            style={{ color: '#a9b1d6', fontSize: 13, margin: 0 }}
+          >
+            Mot de passe admin
+          </label>
           <input
+            id="admin-password"
             type="password"
-            placeholder="Mot de passe admin"
+            placeholder="••••••••"
             value={password}
             onChange={e => setPassword(e.target.value)}
             autoFocus
+            aria-required="true"
             style={{
               background:   '#1a1b26',
               border:       `1px solid ${BORDER_COLOR}`,

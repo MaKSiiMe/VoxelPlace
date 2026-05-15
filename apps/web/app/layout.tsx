@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import '@voxelplace/styles/globals.css'
+import { CookieBanner } from '@features/rgpd/CookieBanner'
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://voxelplace.app'
 
@@ -31,7 +32,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <CookieBanner />
+      </body>
     </html>
   )
 }

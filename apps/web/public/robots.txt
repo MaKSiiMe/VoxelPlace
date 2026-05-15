@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+
+Sitemap: https://s56c-srv.tailedae07.ts.net/sitemap.xml
