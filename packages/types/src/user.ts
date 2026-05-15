@@ -1,3 +1,5 @@
+import type { Platform } from './platform'
+
 export interface User {
   id: string
   username: string

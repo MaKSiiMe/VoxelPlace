@@ -1,3 +1,5 @@
+import type { Platform } from './platform'
+
 export interface Pixel {
   x: number
   y: number

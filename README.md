@@ -10,7 +10,7 @@
 [![Tests](https://img.shields.io/badge/tests-35%20passing-brightgreen)](#tests)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev)
 [![Socket.io](https://img.shields.io/badge/Socket.io-4-010101?logo=socket.io)](https://socket.io)
@@ -35,35 +35,46 @@ r/place a démontré en 2017 et 2022 qu'une contrainte simple — *un pixel par 
 
 ```mermaid
 graph TB
-    subgraph Clients
-        WEB["🌐 Navigateur (Next.js + PixiJS)"]
-        MC["⛏ Minecraft (Plugin Paper)"]
+    subgraph Users["Utilisateurs"]
+        BROWSER["🌐 Joueur Web\nnnavigateur"]
+        MC_PLAYER["⛏ Joueur Minecraft\nclient Java / Bedrock"]
     end
 
-    subgraph Internet
-        TF["Tailscale Funnel — HTTPS auto"]
-        PG_NET["Playit.gg — Tunnel TCP 25565"]
+    subgraph Internet["Internet"]
+        TF["Tailscale Funnel\nHTTPS · WSS"]
+        PG_NET["Playit.gg\nTCP 25565"]
     end
 
-    subgraph Backend["Backend — Docker Compose"]
-        API["Fastify 5 — REST API"]
-        SIO["Socket.io 4 — Temps réel"]
-        REDIS[("Redis 7 — Grille pixels")]
-        PG[("PostgreSQL 16 — Historique · Auth")]
+    subgraph MC_SRV["Serveur Minecraft (hors Docker)"]
+        PAPER["Paper 1.21.11]
+        PLUGIN["Plugin VoxelPlace"]
     end
 
-    WEB -->|HTTPS / WSS| TF --> API
-    WEB <-->|WebSocket| SIO
-    MC <-->|WebSocket| SIO
-    PG_NET --> MC
-    SIO <-->|SETRANGE / HSET| REDIS
-    API <-->|INSERT / SELECT| PG
+    subgraph Docker["Docker Compose"]
+        NGINX["Nginx :80\nreverse proxy"]
+        WEBAPP["voxelplace-web\nNext.js 16 :3000"]
+        API["voxelplace-api\nFastify 5 + Socket.io 4 :3001"]
+        REDIS[("Redis 7\ngrille pixels")]
+        PG[("PostgreSQL 16\nhistorique · auth")]
+    end
+
+    BROWSER   -->|"HTTPS"| TF
+    MC_PLAYER -->|"TCP"| PG_NET --> PAPER
+    PAPER --- PLUGIN
+    PLUGIN    -->|"WSS"| TF
+
+    TF --> NGINX
+    NGINX -->|"/"| WEBAPP
+    NGINX -->|"/api/ · /socket.io/"| API
+    API <-->|"SETRANGE / HSET"| REDIS
+    API <-->|"INSERT / SELECT"| PG
 ```
 
 | Service | Rôle |
 |---------|------|
-| **Tailscale Funnel** | Expose le frontend (port 80) en HTTPS public — sans IP fixe ni ouverture de port |
-| **Playit.gg** | Expose le serveur Minecraft (port 25565) publiquement — même principe |
+| **Tailscale Funnel** | Expose le port 80 (Nginx) en HTTPS/WSS public — joueurs web et plugin Minecraft y transitent |
+| **Playit.gg** | Expose le port 25565 pour les joueurs Minecraft — même principe, sans IP fixe |
+| **Nginx** | Unique point d'entrée Docker — route `/api/` et `/socket.io/` vers `voxelplace-api`, `/` vers `voxelplace-web` |
 | **Tailscale mesh** | Réseau privé CI/CD — déploiement SSH depuis GitHub Actions |
 
 ---
@@ -335,17 +346,22 @@ Les tests s'exécutent automatiquement dans le pipeline CI/CD avant chaque dépl
 | `voxelplace-api` | node:20-alpine | 3001 | Fastify + Socket.io |
 | `voxelplace-db` | postgres:16-alpine | 5432 (interne) | PostgreSQL |
 | `voxelplace-redis` | redis:7-alpine | 6379 (interne) | Redis (RDB + AOF) |
-| Paper 1.21.1 | JVM — **hors Docker** | 25565 via Playit.gg | Serveur Minecraft |
+| Paper 1.21.11| JVM — **hors Docker** | 25565 via Playit.gg | Serveur Minecraft |
 
 ### Pipeline GitHub Actions
 
 ```
-git push main
-  → job test   : node --test tests/*.test.js (35 tests)
-  → job deploy : Tailscale VPN → SSH → git reset --hard → docker compose up --build
+git push main  (ou déclenchement manuel via workflow_dispatch)
+  → job test-backend  : Node 22 — npm test (35 tests, BCRYPT_ROUNDS=1)
+  → job test-frontend : Node 22 — npm test --workspace=apps/web
+  → job deploy        : Tailscale VPN → SSH → git reset --hard
+                        → docker compose build voxelplace-api voxelplace-web
+                        → docker compose up -d
+                        → si apps/game-bridges/minecraft/ a changé :
+                            mvn clean package → copie VoxelPlace.jar → restart minecraft-paper
 ```
 
-Le déploiement est bloqué si les tests échouent.
+Le déploiement est bloqué si les tests échouent. Le plugin Minecraft n'est recompilé et redéployé que si ses sources ont effectivement changé.
 
 ### HTTPS
 
@@ -451,7 +467,7 @@ VoxelPlace/
 │   │       └── api.ts              # API_URL — source unique (NEXT_PUBLIC_API_URL)
 │   │
 │   └── game-bridges/
-│       └── minecraft/              # Plugin Paper 1.21.1
+│       └── minecraft/              # Plugin Paper 1.21.11
 │           ├── src/main/java/fr/voxelplace/minecraft/
 │           │   ├── VoxelPlacePlugin.java   # Cycle de vie du plugin
 │           │   ├── CanvasManager.java      # Grille locale + 16 couleurs béton
@@ -473,13 +489,28 @@ VoxelPlace/
 
 ## Plugin Minecraft
 
-Connecte un serveur **Paper 1.21.1** au backend via Socket.io WebSocket.
+Connecte un serveur **Paper 1.21.11* au backend via Socket.io WebSocket.
 
 - Reçoit `grid:init` au démarrage → dessine le canvas en blocs béton (16 couleurs)
-- Clic droit avec un bloc coloré → `pixel:place` + mise à jour optimiste locale
+- Clic droit avec un bloc coloré (béton **ou laine**) → `pixel:place` + mise à jour optimiste locale
 - `pixel:update` reçus → blocs mis à jour en temps réel
-- Rollback automatique si le serveur refuse (ban, cooldown, coords invalides)
+- Rollback automatique si le serveur refuse (ban, coords invalides)
+- **Pas de cooldown** : les pixels placés depuis Minecraft bypass le rate limiting côté serveur
+- **Action bar** : coordonnées grille + couleur du pixel sous les pieds affichées en marchant sur le canvas
+- **Tutoriel** : `TutorialManager` guide les nouveaux joueurs à la première connexion
 - Exposé via **Playit.gg** (tunnel sans IP publique)
+
+### Commandes `/vp`
+
+| Commande | Description | Droits |
+|----------|-------------|--------|
+| `/vp help` | Affiche l'aide | Tous |
+| `/vp info` | État de la connexion et du canvas | Tous |
+| `/vp tutorial` | Rejoue le tutoriel de bienvenue | Tous |
+| `/vp setup` | Définit le coin du canvas à la position du joueur | OP |
+| `/vp offset <x> <z>` | Déplace la fenêtre dans la grille 2048×2048 | OP |
+| `/vp fill` | Redessine le canvas depuis le serveur | OP |
+| `/vp reload` | Reconnecte au serveur VoxelPlace | OP |
 
 **Correspondance palette ↔ blocs :**
 
