@@ -28,6 +28,9 @@ npm-debug.log*
 .DS_Store
 *.pem
 
+# Backups PostgreSQL
+apps/socket-server/backups/
+
 # Outils de développement local
 .vscode/
 .claude/

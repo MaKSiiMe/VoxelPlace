@@ -42,3 +42,40 @@ html, body {
 canvas {
   display: block;
 }
+
+/* ── Responsive — Breakpoints ─────────────────────────────────────────────── */
+
+/* Tablette : ≤ 768px */
+@media (max-width: 768px) {
+  :root {
+    --bezel-thin:    8px;
+    --bezel-taskbar: 56px;
+    --bezel-radius:  16px;
+  }
+
+  /* Modales plein-largeur sur tablette */
+  [data-modal] {
+    width: calc(100vw - 32px) !important;
+    max-width: 440px;
+  }
+}
+
+/* Mobile : ≤ 480px */
+@media (max-width: 480px) {
+  :root {
+    --bezel-thin:    4px;
+    --bezel-taskbar: 52px;
+    --bezel-radius:  12px;
+  }
+
+  /* Modales plein-largeur sur mobile */
+  [data-modal] {
+    width: calc(100vw - 16px) !important;
+    padding: 20px !important;
+  }
+
+  /* Typographie réduite */
+  html {
+    font-size: 14px;
+  }
+}

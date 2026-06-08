@@ -72,7 +72,7 @@ export function AuthModal({ onSuccess }: Props) {
         backdropFilter: 'blur(4px)',
       }}>
       {/* Card */}
-      <div style={{
+      <div data-modal style={{
         background:   BEZEL_COLOR,
         border:       `1px solid ${BORDER_COLOR}`,
         borderRadius: 12,

@@ -29,6 +29,7 @@ export function SupportModal({ onClose }: Props) {
       onClick={onClose}
     >
       <div
+        data-modal
         style={{
           background:    BEZEL_COLOR,
           border:        `1px solid ${BORDER_COLOR}`,

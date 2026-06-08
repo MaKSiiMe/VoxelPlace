@@ -62,6 +62,7 @@ export function LeaderboardModal({ onClose }: Props) {
       onClick={onClose}
     >
       <div
+        data-modal
         style={{ background:BEZEL_COLOR, border:`1px solid ${BORDER_COLOR}`, borderRadius:12, padding:28, width:440, maxHeight:'80vh', display:'flex', flexDirection:'column', gap:16 }}
         onClick={e => e.stopPropagation()}
       >
