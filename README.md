@@ -36,7 +36,8 @@ r/place a démontré en 2017 et 2022 qu'une contrainte simple — *un pixel par 
 ```mermaid
 graph TB
     subgraph Users["Utilisateurs"]
-        BROWSER["🌐 Joueur Web\nnnavigateur"]
+        BROWSER["🌐 Joueur Web\nnavigateur"]
+        
         MC_PLAYER["⛏ Joueur Minecraft\nclient Java / Bedrock"]
     end
 
@@ -46,7 +47,7 @@ graph TB
     end
 
     subgraph MC_SRV["Serveur Minecraft (hors Docker)"]
-        PAPER["Paper 1.21.11]
+        PAPER["Paper 1.21.11"]
         PLUGIN["Plugin VoxelPlace"]
     end
 
