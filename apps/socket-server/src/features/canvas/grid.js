@@ -8,16 +8,39 @@ export function getPixelIndex(x, y) {
 
 /**
  * Charge la grille depuis Redis.
- * Retourne un Buffer de 4096 octets (un octet par pixel = colorId).
+ * Retourne un Buffer de GRID_SIZE² octets (un octet par pixel = colorId).
+ * Si le buffer est absent ou de taille incorrecte, tente de reconstruire
+ * depuis voxelplace:pixels avant de créer une grille vide.
  */
 export async function loadGrid(redis) {
   const buf = await redis.getBuffer(GRID_KEY)
   if (buf && buf.length === GRID_SIZE * GRID_SIZE) return buf
 
-  // Initialise la grille vide (colorId 0 = blanc)
-  const empty = Buffer.alloc(GRID_SIZE * GRID_SIZE, 0)
-  await redis.set(GRID_KEY, empty)
-  return empty
+  if (buf) {
+    console.warn(`[loadGrid] Buffer taille incorrecte (${buf.length} au lieu de ${GRID_SIZE * GRID_SIZE}). Reconstruction depuis voxelplace:pixels…`)
+  }
+
+  const grid = Buffer.alloc(GRID_SIZE * GRID_SIZE, 0)
+
+  // Reconstruit depuis le hash metadata si des pixels existent
+  const all = await redis.hgetall(PIXELS_KEY)
+  if (all) {
+    let count = 0
+    for (const raw of Object.values(all)) {
+      try {
+        const { x, y, colorId } = JSON.parse(raw)
+        const index = getPixelIndex(x, y)
+        if (index >= 0 && index < grid.length) {
+          grid[index] = colorId & 0x0F
+          count++
+        }
+      } catch { /* entrée corrompue, on l'ignore */ }
+    }
+    if (count > 0) console.log(`[loadGrid] ${count} pixels restaurés depuis voxelplace:pixels.`)
+  }
+
+  await redis.set(GRID_KEY, grid)
+  return grid
 }
 
 /**

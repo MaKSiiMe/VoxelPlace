@@ -71,7 +71,7 @@ export function LeaderboardModal({ onClose }: Props) {
             <span style={{ fontSize:18 }}>🏆</span>
             <span style={{ color:ACCENT_YELLOW, fontWeight:700, fontSize:16, fontFamily:'monospace' }}>Leaderboard</span>
           </div>
-          <button onClick={onClose} style={{ background:'transparent', border:'none', color:BORDER_COLOR, cursor:'pointer', fontSize:18, lineHeight:1, padding:0 }}
+          <button onClick={onClose} aria-label="Fermer" style={{ background:'transparent', border:'none', color:BORDER_COLOR, cursor:'pointer', fontSize:18, lineHeight:1, padding:0 }}
             onMouseEnter={e => (e.currentTarget.style.color = ACCENT_RED)}
             onMouseLeave={e => (e.currentTarget.style.color = BORDER_COLOR)}>✕</button>
         </div>

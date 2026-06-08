@@ -1,5 +1,5 @@
 # URL du serveur VoxelPlace (sans trailing slash)
-server-url: "http://voxelplace-api:3001"
+server-url: "http://localhost"
 
 # Préfixe affiché dans le chat
 prefix: "&6[VoxelPlace]&r "

@@ -51,6 +51,7 @@ export function SupportModal({ onClose }: Props) {
             style={{ background: 'transparent', border: 'none', color: BORDER_COLOR, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
             onMouseEnter={e => (e.currentTarget.style.color = ACCENT_RED)}
             onMouseLeave={e => (e.currentTarget.style.color = BORDER_COLOR)}
+            aria-label="Fermer"
           >
             ✕
           </button>

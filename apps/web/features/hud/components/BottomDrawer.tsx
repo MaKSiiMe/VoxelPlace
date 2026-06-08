@@ -115,6 +115,7 @@ export function BottomDrawer({ onLogout, onOpenAuth }: Props) {
             <button
               onClick={onLogout}
               title="Se déconnecter"
+              aria-label="Se déconnecter"
               style={{
                 background: 'transparent',
                 border:     'none',

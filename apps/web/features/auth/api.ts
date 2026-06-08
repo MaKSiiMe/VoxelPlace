@@ -6,10 +6,12 @@ export interface AuthResponse {
   role:     string
 }
 
+const CSRF_HEADER = { 'X-Requested-With': 'XMLHttpRequest' }
+
 export async function apiRegister(username: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API}/api/auth/register`, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CSRF_HEADER },
     body:    JSON.stringify({ username, password }),
   })
   const data = await res.json()
@@ -20,7 +22,7 @@ export async function apiRegister(username: string, password: string): Promise<A
 export async function apiLogin(username: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API}/api/auth/login`, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CSRF_HEADER },
     body:    JSON.stringify({ username, password }),
   })
   const data = await res.json()

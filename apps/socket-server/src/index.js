@@ -56,6 +56,19 @@ const io = new Server(fastify.server, {
   maxHttpBufferSize: 64e6, // 64MB pour grid:init (4MB buffer → ~8MB JSON)
 })
 
+// Middleware auth : vérifie le JWT si présent, stocke le username vérifié dans socket.data
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token
+  if (token) {
+    const payload = verifyToken(token, JWT_SECRET)
+    if (payload) {
+      socket.data.verifiedUsername = payload.username
+      socket.data.verifiedRole     = payload.role
+    }
+  }
+  next() // Les viewers sans token sont acceptés — lecture seule
+})
+
 // --- Joueurs connectés ---
 // socketId → { username, source }
 const connectedPlayers = new Map()
@@ -392,6 +405,18 @@ io.on('connection', async (socket) => {
   socket.on('pixel:place', async (data, ack) => {
     const pixel = validatePixel(data)
     if (!pixel) return ack?.({ error: 'Données invalides' })
+
+    // Vérification d'identité : si le client a un JWT vérifié, son username doit correspondre
+    // Les clients Minecraft (source minecraft) sont exemptés — ils n'ont pas de JWT web
+    if (pixel.source !== 'minecraft' && socket.data.verifiedUsername) {
+      if (socket.data.verifiedUsername.toLowerCase() !== pixel.username.toLowerCase()) {
+        return ack?.({ error: 'Identité non autorisée' })
+      }
+    }
+    // Si pas de JWT et pas Minecraft → viewer anonyme, ne peut pas placer de pixel
+    if (pixel.source !== 'minecraft' && !socket.data.verifiedUsername) {
+      return ack?.({ error: 'Connexion requise pour placer des pixels' })
+    }
 
     const { wait, cooldownMs } = pixel.source === 'minecraft'
       ? { wait: 0, cooldownMs: 0 }

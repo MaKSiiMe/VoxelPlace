@@ -76,7 +76,7 @@ export function StatsModal({ username, onClose }: Props) {
               {username}
             </span>
           </div>
-          <button onClick={onClose} style={{ background:'transparent', border:'none', color:BORDER_COLOR, cursor:'pointer', fontSize:18, lineHeight:1, padding:0 }}
+          <button onClick={onClose} aria-label="Fermer" style={{ background:'transparent', border:'none', color:BORDER_COLOR, cursor:'pointer', fontSize:18, lineHeight:1, padding:0 }}
             onMouseEnter={e => (e.currentTarget.style.color = ACCENT_RED)}
             onMouseLeave={e => (e.currentTarget.style.color = BORDER_COLOR)}>✕</button>
         </div>

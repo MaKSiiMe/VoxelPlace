@@ -31,9 +31,18 @@ export function verifyToken(token, secret) {
 // Utilise PostgreSQL (pool pg) pour la persistance des comptes utilisateurs.
 // Redis reste exclusivement réservé à la grille de pixels et au temps réel.
 
+function checkCsrf(req, reply) {
+  if (req.headers['x-requested-with'] !== 'XMLHttpRequest') {
+    reply.status(403).send({ error: 'Requête non autorisée (CSRF)' })
+    return false
+  }
+  return true
+}
+
 export async function authRoutes(fastify, { pool, jwtSecret }) {
   // POST /api/auth/register
   fastify.post('/api/auth/register', async (req, reply) => {
+    if (!checkCsrf(req, reply)) return
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
     if (!checkRateLimit(ip)) {
       return reply.status(429).send({ error: 'Trop de tentatives, réessayez dans 1 minute' })
@@ -76,6 +85,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
 
   // POST /api/auth/login
   fastify.post('/api/auth/login', async (req, reply) => {
+    if (!checkCsrf(req, reply)) return
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
     if (!checkRateLimit(ip)) {
       return reply.status(429).send({ error: 'Trop de tentatives, réessayez dans 1 minute' })
