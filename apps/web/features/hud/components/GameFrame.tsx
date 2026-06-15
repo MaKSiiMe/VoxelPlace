@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { HUD_SHADOW, THIN, TASKBAR, RADIUS, BORDER_COLOR, ACCENT_RED, ACCENT_GREEN } from '../theme'
 import { NOTCH_W, NOTCH_H, NOTCH_R } from './Notch'
 import { useCanvasStore } from '@features/canvas/store'
-import { SupportModal }      from './SupportModal'
-import { SettingsModal }     from './SettingsModal'
-import { LeaderboardModal }  from './LeaderboardModal'
-import { StatsModal }        from './StatsModal'
-import { UnlockPanel }       from '@features/unlocks/components/UnlockPanel'
+import dynamic from 'next/dynamic'
+const SupportModal     = dynamic(() => import('./SupportModal').then(m => ({ default: m.SupportModal })),         { ssr: false })
+const SettingsModal    = dynamic(() => import('./SettingsModal').then(m => ({ default: m.SettingsModal })),       { ssr: false })
+const LeaderboardModal = dynamic(() => import('./LeaderboardModal').then(m => ({ default: m.LeaderboardModal })), { ssr: false })
+const StatsModal       = dynamic(() => import('./StatsModal').then(m => ({ default: m.StatsModal })),             { ssr: false })
+const UnlockPanel      = dynamic(() => import('@features/unlocks/components/UnlockPanel').then(m => ({ default: m.UnlockPanel })), { ssr: false })
 
 const ACCENT_BLUE   = '#7aa2f7'
 const ACCENT_YELLOW = '#e0af68'

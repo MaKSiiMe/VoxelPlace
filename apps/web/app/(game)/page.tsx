@@ -1,15 +1,26 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import dynamic            from 'next/dynamic'
 import { GameFrame }      from '@features/hud/components/GameFrame'
 import { BottomDrawer }   from '@features/hud/components/BottomDrawer'
 import { Notch }          from '@features/hud/components/Notch'
-import { CanvasEngine }   from '@features/canvas/components/CanvasEngine'
 import { useSocket }      from '@features/realtime/hooks/useSocket'
 import { useCanvasStore } from '@features/canvas/store'
 import { useAuthStore }   from '@features/auth/store'
-import { AuthModal }      from '@features/auth/components/AuthModal'
-import { Minimap }        from '@features/canvas/components/Minimap'
+
+const CanvasEngine = dynamic(
+  () => import('@features/canvas/components/CanvasEngine').then(m => ({ default: m.CanvasEngine })),
+  { ssr: false }
+)
+const AuthModal = dynamic(
+  () => import('@features/auth/components/AuthModal').then(m => ({ default: m.AuthModal })),
+  { ssr: false }
+)
+const Minimap = dynamic(
+  () => import('@features/canvas/components/Minimap').then(m => ({ default: m.Minimap })),
+  { ssr: false }
+)
 
 export default function GamePage() {
   const [showModal,     setShowModal]     = useState(false)
