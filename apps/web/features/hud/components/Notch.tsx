@@ -27,10 +27,19 @@ export function Notch() {
   const hoveredPixel = useCanvasStore((s) => s.hoveredPixel)
   const [remaining, setRemaining] = useState<number | null>(null)
   const rafRef = useRef<number>(0)
+  const wasOnCooldown = useRef(false)
+  const [announcement, setAnnouncement] = useState('')
 
   useEffect(() => {
     const loop = () => {
       const { cooldownEnd } = useCanvasStore.getState()
+      const onCooldown = !!cooldownEnd && cooldownEnd > Date.now()
+
+      if (onCooldown !== wasOnCooldown.current) {
+        setAnnouncement(onCooldown ? 'Recharge en cours.' : 'Vous pouvez poser un pixel.')
+        wasOnCooldown.current = onCooldown
+      }
+
       if (cooldownEnd) {
         const ms = cooldownEnd - Date.now()
         setRemaining(ms > 0 ? ms : null)
@@ -70,6 +79,9 @@ export function Notch() {
       >
         {label}
       </div>
+      <span role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </span>
     </div>
   )
 }

@@ -43,6 +43,12 @@ canvas {
   display: block;
 }
 
+/* ── Accessibilité — Navigation clavier ───────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
 /* ── Responsive — Breakpoints ─────────────────────────────────────────────── */
 
 /* Tablette : ≤ 768px */
