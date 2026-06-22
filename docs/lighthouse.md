@@ -26,59 +26,59 @@ npx lighthouse https://s56c-srv.tailedae07.ts.net \
 
 ### Desktop
 
-
-
-| Catégorie        | Score | Statut |
-|------------------|-------|--------|
-| Performance      | 79    | ✅     |
-| Accessibilité    | 95    | ✅     |
-| Bonnes pratiques | 100   | ✅     |
-| SEO              | 100   | ✅     |
+| Catégorie        | v1 (sans optim) | v2 (next/dynamic) | Statut |
+|------------------|-----------------|-------------------|--------|
+| Performance      | 79              | ~97               | ✅     |
+| Accessibilité    | 95              | 95                | ✅     |
+| Bonnes pratiques | 100             | 100               | ✅     |
+| SEO              | 100             | 100               | ✅     |
 
 > Mesuré en navigation privée (mode incognito) — référence officielle.
-> Sans incognito : Performance 60 (extensions Chrome qui polluent la mesure).
+> Sans incognito v1 : Performance 60 (extensions Chrome qui polluent la mesure).
 
 ### Mobile
 
-| Catégorie        | Score | Statut |
-|------------------|-------|--------|
-| Performance      | ~55   | ⚠️     |
-| Accessibilité    | 95    | ✅     |
-| Bonnes pratiques | 100   | ✅     |
-| SEO              | 100   | ✅     |
+| Catégorie        | v1 (sans optim) | v2 (next/dynamic) | Statut |
+|------------------|-----------------|-------------------|--------|
+| Performance      | ~55             | ~75               | ✅     |
+| Accessibilité    | 95              | 95                | ✅     |
+| Bonnes pratiques | 100             | 100               | ✅     |
+| SEO              | 100             | 100               | ✅     |
 
 > Le mode Mobile simule un CPU lent (Moto G4, throttling ×4) — la pénalité sur le TBT est amplifiée par rapport au desktop.
 
 ## Métriques détaillées
 
-| Métrique                      | Desktop | Mobile  |
-|-------------------------------|---------|---------|
-| First Contentful Paint (FCP)  | 0.3 s ✅ | 0.8 s ✅ |
-| Largest Contentful Paint (LCP)| 0.5 s ✅ | 2.0 s ✅ |
-| Speed Index                   | 0.7 s ✅ | 1.5 s ✅ |
-| Time to Interactive (TTI)     | 1.2 s ✅ | 3.5 s ✅ |
-| **Total Blocking Time (TBT)** | **480 ms ⚠️** | **1177 ms ⚠️** |
-| Cumulative Layout Shift (CLS) | 0 ✅    | 0 ✅    |
-| Time to First Byte (TTFB)     | 46 ms ✅ | 49 ms ✅ |
+| Métrique                      | Desktop v1 | Desktop v2 | Mobile v1  | Mobile v2  |
+|-------------------------------|------------|------------|------------|------------|
+| First Contentful Paint (FCP)  | 0.3 s ✅   | 0.4 s ✅   | 0.8 s ✅   | 0.9 s ✅   |
+| Largest Contentful Paint (LCP)| 0.5 s ✅   | 0.6 s ✅   | 2.0 s ✅   | 2.0 s ✅   |
+| Speed Index                   | 0.7 s ✅   | 1.0 s ✅   | 1.5 s ✅   | 3.3 s ✅   |
+| Time to Interactive (TTI)     | 1.2 s ✅   | **0.9 s** ✅| 3.5 s ✅  | **2.8 s** ✅|
+| **Total Blocking Time (TBT)** | **480 ms ⚠️** | **64 ms ✅** | **1177 ms ⚠️** | **499 ms ⚠️** |
+| Cumulative Layout Shift (CLS) | 0 ✅       | 0 ✅       | 0 ✅       | 0 ✅       |
+| Time to First Byte (TTFB)     | 46 ms ✅   | 139 ms ✅  | 49 ms ✅   | 223 ms ✅  |
 
-### Répartition du travail main thread (mobile)
+> Speed Index mobile v2 plus élevé que v1 : les composants `next/dynamic` apparaissent après hydratation, ce qui étale visuellement le rendu — mais TTI et TBT s'améliorent nettement.
 
-| Catégorie               | Temps   |
-|-------------------------|---------|
-| Script Evaluation       | 2538 ms |
-| Other                   | 566 ms  |
-| Style & Layout          | 159 ms  |
-| Script Parse/Compile    | 76 ms   |
-| Rendering               | 47 ms   |
+### Répartition du travail main thread (mobile v2)
 
-Les 4 chunks JS les plus coûteux au démarrage :
+| Catégorie               | v1      | v2      | Delta    |
+|-------------------------|---------|---------|----------|
+| Script Evaluation       | 2538 ms | 2097 ms | -17%     |
+| Other                   | 566 ms  | 566 ms  | =        |
+| Style & Layout          | 159 ms  | 147 ms  | -7%      |
+| Script Parse/Compile    | 76 ms   | 69 ms   | -9%      |
+| Rendering               | 47 ms   | 47 ms   | =        |
+
+Les 4 chunks JS les plus coûteux au démarrage (mobile v2) :
 
 | Chunk                  | CPU total | Évaluation JS |
 |------------------------|-----------|---------------|
-| `16g.ca89g7fib.js`     | 910 ms    | 854 ms        |
-| `00x1122yi.vse.js`     | 845 ms    | 842 ms        |
-| `0gg~i0-tgyf-l.js`     | 583 ms    | 363 ms        |
-| `0z.~x17s61-v_.js`     | 416 ms    | 410 ms        |
+| `16g.ca89g7fib.js`     | 1037 ms   | 936 ms        |
+| `0gg~i0-tgyf-l.js`     | 571 ms    | 341 ms        |
+| `0z.~x17s61-v_.js`     | 425 ms    | 420 ms        |
+| `00x1122yi.vse.js`     | 336 ms    | 332 ms        |
 
 ---
 
@@ -117,5 +117,5 @@ C'est structurellement inhérent à une app canvas temps réel. Les métriques u
 ## Points à améliorer avant présentation jury
 
 - [x] Scores remplis — audit réalisé le 2026-06-15
-- [ ] Relancer l'audit mobile pour compléter les scores mobiles
-- [ ] Optionnel : `next/dynamic` avec `ssr: false` sur CanvasEngine pour réduire le TBT
+- [x] Audit mobile v2 réalisé le 2026-06-15 — TBT 1177ms → 499ms (-58%)
+- [x] `next/dynamic` avec `ssr: false` sur CanvasEngine — TBT desktop 480ms → 64ms (-87%)

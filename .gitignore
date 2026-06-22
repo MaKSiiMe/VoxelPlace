@@ -36,5 +36,7 @@ apps/socket-server/backups/
 .claude/
 CLAUDE.md
 RNCP_Docs/
+docs/dossier/
+docs/rapport.md
 tools/
 DESIGN.md

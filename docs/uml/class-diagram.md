@@ -8,6 +8,7 @@ classDiagram
     class VoxelPlaceServer {
         +start(port)
         +broadcastPlayers()
+        +checkRateLimit(username)
     }
 
     class GridService {
@@ -15,6 +16,7 @@ classDiagram
         +loadGrid(redis) Buffer
         +setPixel(redis, pixel)
         +getPixelIndex(x, y) int
+        +getPixelMeta(redis, x, y)
     }
 
     class AuthRoutes {
@@ -30,15 +32,22 @@ classDiagram
     }
 
     class UnlockEngine {
-        +processPixelPlaced()
-        +checkFeatureUnlocks()
+        +processPixelPlaced(pool, username, colorId, x, y)
+        +checkFeatureUnlocks(pool, username)
+        +processPixelLost(pool, username)
+    }
+
+    class DashboardService {
+        +getPlayerDashboard(username)
+        +getGlobalStats()
     }
 
     %% ── Frontend ─────────────────────────────────────────────────────────────
 
     class GamePage {
-        +getStoredAuth()
-        +handleAuthSuccess()
+        +effectiveUser : string
+        +showModal : boolean
+        +handleLogout()
     }
 
     class CanvasStore {
@@ -48,6 +57,21 @@ classDiagram
         +role : string
         +updatePixel(x, y, colorId)
         +setCooldown(ms)
+        +setRole(role)
+    }
+
+    class AuthStore {
+        +username : string
+        +role : string
+        +token : string
+        +login(data)
+        +logout()
+        +loadFromStorage()
+    }
+
+    class CanvasEngine {
+        +username : string
+        +render()
     }
 
     class usePixiCanvas {
@@ -62,10 +86,16 @@ classDiagram
 
     class AuthModal {
         +handleSubmit()
+        +onSuccess(data)
     }
 
     class AdminGuard {
         +getRole() string
+    }
+
+    class AdminDashboard {
+        +listBans()
+        +listReports()
     }
 
     %% ── Plugin Minecraft ─────────────────────────────────────────────────────
@@ -92,25 +122,30 @@ classDiagram
 
     %% ── Relations ────────────────────────────────────────────────────────────
 
-    VoxelPlaceServer --> GridService    : utilise
-    VoxelPlaceServer --> AuthRoutes     : enregistre
-    VoxelPlaceServer --> AdminRoutes    : enregistre
-    VoxelPlaceServer --> UnlockEngine   : utilise
+    VoxelPlaceServer --> GridService      : utilise
+    VoxelPlaceServer --> AuthRoutes       : enregistre
+    VoxelPlaceServer --> AdminRoutes      : enregistre
+    VoxelPlaceServer --> UnlockEngine     : utilise
+    VoxelPlaceServer --> DashboardService : utilise
 
-    GamePage        --> useSocket       : hook
-    GamePage        --> AuthModal       : affiche
-    useSocket       --> CanvasStore     : setGrid / updatePixel
-    usePixiCanvas   --> CanvasStore     : subscribe
-    AdminGuard      ..> GamePage        : protège /dashboard
+    GamePage        --> useSocket         : hook
+    GamePage        --> AuthStore         : hook
+    GamePage        --> CanvasEngine      : affiche
+    GamePage        --> AuthModal         : affiche (conditionnel)
+    CanvasEngine    --> usePixiCanvas     : hook
+    useSocket       --> CanvasStore       : setGrid / updatePixel
+    usePixiCanvas   --> CanvasStore       : subscribe
+    AuthModal       --> AuthStore         : login()
+    AdminGuard      ..> AdminDashboard    : protège /admin
 
-    VoxelPlacePlugin *-- CanvasManager  : composition
-    VoxelPlacePlugin *-- SocketManager  : composition
-    VoxelPlacePlugin *-- CanvasListener : composition
-    CanvasListener   --> CanvasManager  : utilise
-    CanvasListener   --> SocketManager  : utilise
+    VoxelPlacePlugin *-- CanvasManager   : composition
+    VoxelPlacePlugin *-- SocketManager   : composition
+    VoxelPlacePlugin *-- CanvasListener  : composition
+    CanvasListener   --> CanvasManager   : utilise
+    CanvasListener   --> SocketManager   : utilise
 
-    SocketManager  ..> VoxelPlaceServer : WebSocket
-    useSocket      ..> VoxelPlaceServer : WebSocket
+    SocketManager  ..> VoxelPlaceServer  : WebSocket
+    useSocket      ..> VoxelPlaceServer  : WebSocket
 ```
 
 ---
