@@ -42,7 +42,7 @@ beforeEach(async () => {
  * un délai fixe suffirait la plupart du temps, mais pas quand toute la suite
  * s'exécute en parallèle — d'où cette attente conditionnelle.
  */
-async function waitFor(condition, { timeout = 3000, interval = 10 } = {}) {
+async function waitFor(condition, { timeout = 10_000, interval = 10 } = {}) {
   const deadline = Date.now() + timeout
   for (;;) {
     if (await condition()) return true
@@ -51,8 +51,15 @@ async function waitFor(condition, { timeout = 3000, interval = 10 } = {}) {
   }
 }
 
-const countHistory = async () => {
-  const { rows } = await db.pool.query('SELECT count(*)::int AS n FROM pixel_history')
+/**
+ * Nombre de lignes d'historique à une coordonnée donnée.
+ * On interroge une coordonnée propre au test plutôt que la table entière : une
+ * écriture tardive d'un test voisin ne peut alors pas fausser le résultat.
+ */
+const countHistoryAt = async (x, y) => {
+  const { rows } = await db.pool.query(
+    'SELECT count(*)::int AS n FROM pixel_history WHERE x = $1 AND y = $2', [x, y]
+  )
   return rows[0].n
 }
 
@@ -90,11 +97,13 @@ describe('placePixel — cas nominal', { skip: skip() }, () => {
 
   it('journalise la pose dans pixel_history', async () => {
     await createUser('Alice')
-    await placePixel(deps, webPixel(), asAlice)
+    await placePixel(deps, webPixel({ x: 1777, y: 1333 }), asAlice)
 
-    assert.ok(await waitFor(async () => (await countHistory()) === 1), 'la pose doit être journalisée')
+    assert.ok(await waitFor(async () => (await countHistoryAt(1777, 1333)) === 1), 'la pose doit être journalisée')
 
-    const { rows } = await db.pool.query('SELECT username, color_id FROM pixel_history')
+    const { rows } = await db.pool.query(
+      'SELECT username, color_id FROM pixel_history WHERE x = 1777 AND y = 1333'
+    )
     assert.equal(rows[0].username, 'Alice')
   })
 
@@ -229,11 +238,11 @@ describe('placePixel — données invalides', { skip: skip() }, () => {
   })
 
   it('ne laisse aucune trace en base après un rejet', async () => {
-    await placePixel(deps, webPixel({ colorId: 99 }), asAlice)
+    await placePixel(deps, webPixel({ x: 1888, y: 1444, colorId: 99 }), asAlice)
 
     // Rien ne doit apparaître : on laisse une fenêtre large pour qu'une
     // insertion parasite ait le temps de se manifester si elle existe.
-    const appeared = await waitFor(async () => (await countHistory()) > 0, { timeout: 300 })
+    const appeared = await waitFor(async () => (await countHistoryAt(1888, 1444)) > 0, { timeout: 500 })
     assert.equal(appeared, false, 'un pixel rejeté ne doit rien journaliser')
   })
 })
