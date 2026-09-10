@@ -10,7 +10,6 @@ COPY turbo.json ./
 COPY packages/config/package.json         ./packages/config/
 COPY packages/types/package.json          ./packages/types/
 COPY packages/styles/package.json         ./packages/styles/
-COPY packages/db/package.json             ./packages/db/
 
 # Web app manifest
 COPY apps/web/package.json ./apps/web/
