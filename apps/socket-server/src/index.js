@@ -49,8 +49,12 @@ await fastify.register(cors, { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST',
 // PostgreSQL doit répondre avant l'enregistrement des routes : plusieurs
 // features créent leur table à l'inscription (shareRoutes, pixelChat, unlocks).
 // Sans cette attente, un démarrage plus rapide que la base tue le process.
-await connectWithRetry()
-
+try {
+  await connectWithRetry()
+} catch (err) {
+  console.error(err)
+  process.exit(1)
+}
 // --- Routes REST (features) ---
 await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
 await playerRoutes(fastify, { pool })
