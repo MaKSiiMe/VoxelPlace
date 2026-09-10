@@ -3,9 +3,10 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { Server } from 'socket.io'
 import Redis from 'ioredis'
-import { loadGrid, setPixel, getPixelMeta, GRID_SIZE } from './features/canvas/grid.js'
+import { loadGrid, setPixel, clearGrid, getPixelMeta, GRID_SIZE } from './features/canvas/grid.js'
 import { isValidCoord, sanitizeUsername, validatePixel } from './features/canvas/utils.js'
 import { authRoutes } from './features/auth/routes.js'
+import { createSocketAuth } from './features/auth/socket-auth.js'
 import { playerRoutes } from './features/players/routes.js'
 import { timelapseRoutes } from './features/timelapse/routes.js'
 import { zoneRoutes } from './features/zone/routes.js'
@@ -14,6 +15,8 @@ import { adminRoutes } from './features/admin/routes.js'
 import { globalDashboardRoutes } from './features/dashboard/global.js'
 import { playerDashboardRoutes } from './features/dashboard/player.js'
 import { pool, connectWithRetry } from './shared/db.js'
+import { constantTimeEqual } from './shared/crypto.js'
+import { checkRateLimit as checkAuthRateLimit } from './features/auth/rate-limit.js'
 import { PALETTE_HEX as COLORS } from './shared/palette.js'
 import { registerChatEvents } from './features/chat/events.js'
 import { initPixelChatTable, registerPixelChatEvents, resetPixelThread } from './features/chat/pixelChat.js'
@@ -56,18 +59,8 @@ const io = new Server(fastify.server, {
   maxHttpBufferSize: 64e6, // 64MB pour grid:init (4MB buffer → ~8MB JSON)
 })
 
-// Middleware auth : vérifie le JWT si présent, stocke le username vérifié dans socket.data
-io.use((socket, next) => {
-  const token = socket.handshake.auth?.token
-  if (token) {
-    const payload = verifyToken(token, JWT_SECRET)
-    if (payload) {
-      socket.data.verifiedUsername = payload.username
-      socket.data.verifiedRole     = payload.role
-    }
-  }
-  next() // Les viewers sans token sont acceptés — lecture seule
-})
+// Vérifie le JWT du handshake — les viewers sans token restent acceptés en lecture seule
+io.use(createSocketAuth(JWT_SECRET))
 
 // --- Joueurs connectés ---
 // socketId → { username, source }
@@ -355,8 +348,14 @@ io.on('connection', async (socket) => {
 
   // Authentification admin
   socket.on('admin:auth', (password, ack) => {
+    // Même protection que POST /api/admin/login : sans limite de tentatives,
+    // ce canal permettrait de brute-forcer le mot de passe admin par socket.
+    const ip = socket.handshake.address ?? 'unknown'
+    if (!checkAuthRateLimit(`admin-socket:${ip}`, 5)) {
+      return ack?.({ error: 'Trop de tentatives, réessayez dans 1 minute' })
+    }
     const expected = process.env.ADMIN_PASSWORD
-    if (!expected || password !== expected) {
+    if (!expected || !constantTimeEqual(password, expected)) {
       console.warn(`[Admin] Tentative échouée depuis ${socket.id}`)
       return ack?.({ error: 'Mot de passe incorrect' })
     }
@@ -385,16 +384,11 @@ io.on('connection', async (socket) => {
   socket.on('admin:clearAll', async (_, ack) => {
     if (!socket.data.isAdmin) return ack?.({ error: 'Non autorisé' })
     try {
-      const total = GRID_SIZE * GRID_SIZE
-      for (let i = 0; i < total; i++) {
-        const x = i % GRID_SIZE
-        const y = Math.floor(i / GRID_SIZE)
-        const pixel = { x, y, colorId: 0, username: '[admin]', source: 'moderation' }
-        await setPixel(redis, pixel)
-        io.emit('pixel:update', pixel)
-      }
+      const total = await clearGrid(redis)
+      // Un seul signal : les clients redemandent la grille d'eux-mêmes
+      io.emit('canvas:reload')
       console.log('[Admin] Canvas entièrement remis à zéro')
-      ack?.({ ok: true })
+      ack?.({ ok: true, cleared: total })
     } catch (err) {
       console.error('[admin:clearAll]', err)
       ack?.({ error: 'Erreur serveur' })

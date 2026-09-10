@@ -7,6 +7,6 @@
   "types": "./index.ts",
   "exports": {
     ".": "./index.ts",
-    "./roles": "./src/roles.js"
+    "./roles": "./src/roles.constants.js"
   }
 }

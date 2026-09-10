@@ -69,6 +69,13 @@ public class SocketManager {
                 }
             });
 
+            // Le serveur a vidé ou restauré le canvas : la fenêtre locale est
+            // périmée, on la recharge intégralement depuis l'API.
+            socket.on("canvas:reload", args -> {
+                plugin.getLogger().info("[Socket] canvas:reload — rechargement de la fenêtre.");
+                requestGridRefresh();
+            });
+
             // Mise à jour d'un pixel (broadcast de tous les clients)
             socket.on("pixel:update", args -> {
                 try {

@@ -11,6 +11,9 @@
 // DELETE /api/admin/canvas                → vider le canvas (superadmin only)
 
 import jwt from 'jsonwebtoken'
+import { checkRateLimit } from '../auth/rate-limit.js'
+import { clearGrid } from '../canvas/grid.js'
+import { constantTimeEqual } from '../../shared/crypto.js'
 
 const ADMIN_ROLES = ['admin', 'superadmin']
 
@@ -18,9 +21,15 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
 
   // POST /api/admin/login — retourne un JWT avec role:superadmin
   fastify.post('/api/admin/login', async (req, reply) => {
+    // Ce mot de passe ouvre un JWT superadmin valable 7 jours : il doit être
+    // au moins aussi protégé que /api/auth/login, et comparé à temps constant.
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
+    if (!checkRateLimit(`admin:${ip}`, 5)) {
+      return reply.status(429).send({ error: 'Trop de tentatives, réessayez dans 1 minute' })
+    }
     const { password } = req.body || {}
     const expected = process.env.ADMIN_PASSWORD
-    if (!expected || password !== expected) {
+    if (!expected || !constantTimeEqual(password, expected)) {
       return reply.status(401).send({ error: 'Mot de passe incorrect' })
     }
     const token = jwt.sign({ role: 'superadmin' }, JWT_SECRET, { expiresIn: '7d' })
@@ -207,15 +216,11 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     if (!requireAdmin(req, reply, true)) return
 
     const admin = req.headers['x-admin-name'] ?? '[admin]'
-    const total = GRID_SIZE * GRID_SIZE
 
-    for (let i = 0; i < total; i++) {
-      const x = i % GRID_SIZE
-      const y = Math.floor(i / GRID_SIZE)
-      const pixel = { x, y, colorId: 0, username: '[admin]', source: 'moderation' }
-      await setPixel(redis, pixel)
-      io.emit('pixel:update', pixel)
-    }
+    // Deux commandes Redis, pas GRID_SIZE² — voir clearGrid()
+    const total = await clearGrid(redis)
+    // Un seul signal : les clients redemandent la grille d'eux-mêmes
+    io.emit('canvas:reload')
 
     await pool.query(
       `INSERT INTO moderation_logs (action, admin) VALUES ('clear_all', $1)`,

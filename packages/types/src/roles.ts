@@ -1,3 +1,11 @@
 export type UserRole = 'user' | 'superuser' | 'admin' | 'superadmin'
 
-export { SUPERUSER_PREFIXES, ROLE_COOLDOWNS } from './roles.js'
+// Les valeurs vivent dans un .js séparé : le backend est du JavaScript sans
+// étape de build et les importe directement (@voxelplace/types/roles), tandis
+// que le front passe par ce fichier pour récupérer aussi le type UserRole.
+//
+// Le fichier ne doit surtout pas s'appeler roles.js : TypeScript résout
+// './roles.js' vers './roles.ts', c'est-à-dire ce fichier lui-même, ce qui
+// produit une « Circular definition of import alias » et fait échouer
+// silencieusement le build de production.
+export { SUPERUSER_PREFIXES, ROLE_COOLDOWNS } from './roles.constants.js'
