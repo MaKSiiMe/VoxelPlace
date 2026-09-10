@@ -62,8 +62,13 @@ export function Minimap() {
     // Rendu initial
     scheduleRender(useCanvasStore.getState().grid)
 
-    // Abonnement aux mises à jour
-    const unsub = useCanvasStore.subscribe((s) => s.grid, scheduleRender)
+    // La grille étant mutée en place, sa référence ne change plus : on observe
+    // le compteur de version. Le rendu reste limité à une frame par
+    // requestAnimationFrame, quel que soit le nombre de pixels reçus.
+    const unsub = useCanvasStore.subscribe(
+      (s) => s.gridVersion,
+      () => scheduleRender(useCanvasStore.getState().grid),
+    )
     return () => {
       unsub()
       cancelAnimationFrame(rafRef.current)

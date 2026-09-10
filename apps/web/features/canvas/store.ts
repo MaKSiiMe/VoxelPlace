@@ -25,6 +25,20 @@ export const DEFAULT_COLORS = [
   '#FF88AA', // 15 rose
 ]
 
+/**
+ * Indices des pixels modifiés depuis le dernier rendu.
+ *
+ * Volontairement hors du store : cette file est vidée par le moteur de rendu à
+ * chaque frame, et n'a aucune raison de déclencher un rendu React.
+ */
+const dirtyPixels: number[] = []
+
+/** Vide la file et renvoie les indices accumulés. */
+export function drainDirtyPixels(): number[] {
+  if (dirtyPixels.length === 0) return []
+  return dirtyPixels.splice(0, dirtyPixels.length)
+}
+
 interface Players {
   count: number
   byPlatform: Record<string, number>
@@ -32,6 +46,14 @@ interface Players {
 
 interface CanvasStore {
   grid: Uint8Array | null
+  /**
+   * Incrémenté à chaque modification de la grille.
+   *
+   * La grille est mutée en place : recopier 4 Mo à chaque pixel reçu était le
+   * premier des trois coûts qui plafonnaient le rendu. Comme la référence ne
+   * change plus, c'est ce compteur que les abonnés observent.
+   */
+  gridVersion: number
   gridSize: number
   selectedColor: number | null
   hoveredPixel: { x: number; y: number } | null
@@ -64,6 +86,7 @@ interface CanvasStore {
 export const useCanvasStore = create<CanvasStore>()(
   subscribeWithSelector((set, get) => ({
     grid: null,
+    gridVersion: 0,
     gridSize: 2048,
     selectedColor: null,
     hoveredPixel: null,
@@ -77,7 +100,11 @@ export const useCanvasStore = create<CanvasStore>()(
     role: null,
     isEditMode: true,
 
-    setGrid: (grid) => set({ grid }),
+    setGrid: (grid) => {
+      // Nouvelle grille complète : les modifications en attente n'ont plus de sens
+      dirtyPixels.length = 0
+      set({ grid, gridVersion: get().gridVersion + 1 })
+    },
     setGridSize: (gridSize) => set({ gridSize }),
     setSelectedColor: (selectedColor) => set({ selectedColor }),
     setHoveredPixel: (hoveredPixel) => set({ hoveredPixel }),
@@ -90,13 +117,16 @@ export const useCanvasStore = create<CanvasStore>()(
     setRole: (role) => set({ role }),
     setIsEditMode: (isEditMode) => set({ isEditMode }),
 
-    updatePixel: (x, y, colorId) =>
-      set((state) => {
-        if (!state.grid) return {}
-        const next = new Uint8Array(state.grid)
-        next[y * state.gridSize + x] = colorId
-        return { grid: next }
-      }),
+    updatePixel: (x, y, colorId) => {
+      const { grid, gridSize, gridVersion } = get()
+      if (!grid) return
+      const index = y * gridSize + x
+      if (grid[index] === colorId) return   // rien n'a changé
+
+      grid[index] = colorId                 // mutation en place, aucune copie
+      dirtyPixels.push(index)
+      set({ gridVersion: gridVersion + 1 })
+    },
 
     placePixel: (x, y, username) => {
       const { selectedColor, grid, gridSize, updatePixel, role, isEditMode } = get()
@@ -104,6 +134,10 @@ export const useCanvasStore = create<CanvasStore>()(
       if (selectedColor === null) return
       if (!isEditMode) return
       if (!grid || x < 0 || x >= gridSize || y < 0 || y >= gridSize) return
+
+      // Relevée avant la pose : la grille étant mutée en place, la relire
+      // après ne rendrait plus que la couleur qu'on vient d'écrire.
+      const previousColor = grid[y * gridSize + x]
 
       const cooldownMs = ROLE_COOLDOWNS[role]
       updatePixel(x, y, selectedColor)
@@ -116,7 +150,7 @@ export const useCanvasStore = create<CanvasStore>()(
           if (!ack?.ok) {
             // rollback de l'optimistic update
             console.warn('[pixel:place] rejected:', ack?.error)
-            updatePixel(x, y, grid[y * gridSize + x])
+            updatePixel(x, y, previousColor)
           }
           // Met à jour le cooldown avec la valeur réelle du serveur (en ms)
           if (typeof ack?.cooldown === 'number' && ack.cooldown > 0) {
