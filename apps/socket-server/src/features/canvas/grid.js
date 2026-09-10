@@ -62,6 +62,23 @@ export async function setPixel(redis, { x, y, colorId, username, source }) {
 }
 
 /**
+ * Remet le canvas entièrement à blanc.
+ *
+ * Écrit le buffer vide en une seule commande et supprime le hash de
+ * métadonnées. Remplace une boucle de GRID_SIZE² setPixel (soit ~8,4 millions
+ * de commandes Redis) par deux commandes.
+ *
+ * Les clients doivent être prévenus par un unique `canvas:reload` — surtout
+ * pas par GRID_SIZE² émissions de `pixel:update`.
+ */
+export async function clearGrid(redis) {
+  const empty = Buffer.alloc(GRID_SIZE * GRID_SIZE, 0)
+  await redis.set(GRID_KEY, empty)
+  await redis.del(PIXELS_KEY)
+  return GRID_SIZE * GRID_SIZE
+}
+
+/**
  * Retourne les métadonnées d'un pixel (ou null si jamais modifié).
  */
 export async function getPixelMeta(redis, x, y) {
