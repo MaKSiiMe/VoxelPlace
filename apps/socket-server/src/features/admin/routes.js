@@ -15,9 +15,9 @@ import { checkRateLimit } from '../auth/rate-limit.js'
 import { clearGrid } from '../canvas/grid.js'
 import { isValidCoord } from '../canvas/utils.js'
 import { parsePositiveInt } from '../../shared/query.js'
+import { requireAdmin as checkAdmin } from '../auth/require-admin.js'
 import { constantTimeEqual } from '../../shared/crypto.js'
 
-const ADMIN_ROLES = ['admin', 'superadmin']
 
 
 export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE }) {
@@ -39,26 +39,9 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     reply.send({ token, role: 'superadmin' })
   })
 
-  // Middleware — vérifie signature JWT + role admin/superadmin
-  function requireAdmin(req, reply, requireSuperAdmin = false) {
-    const auth = req.headers['authorization']
-    if (!auth?.startsWith('Bearer ')) {
-      reply.status(401).send({ error: 'Token requis' }); return null
-    }
-    try {
-      const payload = jwt.verify(auth.slice(7), JWT_SECRET)
-      const role = payload.role ?? ''
-      if (requireSuperAdmin && role !== 'superadmin') {
-        reply.status(403).send({ error: 'Accès réservé au superadmin' }); return null
-      }
-      if (!ADMIN_ROLES.includes(role)) {
-        reply.status(403).send({ error: 'Accès refusé' }); return null
-      }
-      return payload
-    } catch {
-      reply.status(401).send({ error: 'Token invalide' }); return null
-    }
-  }
+  // Implémentation partagée — voir features/auth/require-admin.js
+  const requireAdmin = (req, reply, superAdminOnly = false) =>
+    checkAdmin(req, reply, { jwtSecret: JWT_SECRET, superAdminOnly })
 
   // POST /api/admin/promote-hbtn — passe tous les hbtn_* en superuser (superadmin only)
   fastify.post('/api/admin/promote-hbtn', async (req, reply) => {
