@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { HUD_SHADOW, THIN, TASKBAR, RADIUS, BORDER_COLOR, ACCENT_RED, ACCENT_GREEN } from '../theme'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { HUD_SHADOW, THIN, TASKBAR, RADIUS, BORDER_COLOR } from '../theme'
+import { cooldownAppearance, IDLE_APPEARANCE } from '../cooldownAppearance'
 import { NOTCH_W, NOTCH_H, NOTCH_R } from './Notch'
 import { useCanvasStore } from '@features/canvas/store'
 import dynamic from 'next/dynamic'
@@ -13,19 +14,6 @@ const UnlockPanel      = dynamic(() => import('@features/unlocks/components/Unlo
 
 const ACCENT_BLUE   = '#7aa2f7'
 const ACCENT_YELLOW = '#e0af68'
-
-function hexToRgb(hex: string) {
-  return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]
-}
-
-function interpolateColor(progress: number): string {
-  const [r1, g1, b1] = hexToRgb(ACCENT_RED)
-  const [r2, g2, b2] = hexToRgb(ACCENT_GREEN)
-  const r = Math.round(r1 * (1 - progress) + r2 * progress)
-  const g = Math.round(g1 * (1 - progress) + g2 * progress)
-  const b = Math.round(b1 * (1 - progress) + b2 * progress)
-  return `rgb(${r},${g},${b})`
-}
 
 function outerPath(w: number, h: number): string {
   return `M0,0 H${w} V${h} H0 Z`
@@ -72,8 +60,9 @@ interface Props {
 
 export function GameFrame({ username, onLogout }: Props) {
   const [vp, setVp]             = useState({ w: 0, h: 0 })
-  const [borderColor, setBorderColor] = useState(BORDER_COLOR)
-  const [glowBlur, setGlowBlur] = useState(2)
+  // Animés hors de React : voir l'effet de cooldown plus bas
+  const borderRef = useRef<SVGPathElement>(null)
+  const blurRef   = useRef<SVGFEGaussianBlurElement>(null)
   const [showSupport,      setShowSupport]      = useState(false)
   const [showSettings,     setShowSettings]     = useState(false)
   const [showUnlocks,      setShowUnlocks]      = useState(false)
@@ -94,30 +83,40 @@ export function GameFrame({ username, onLogout }: Props) {
     return () => window.removeEventListener('resize', update)
   }, [])
 
+  // Animation de la bordure pendant le cooldown.
+  //
+  // Elle passait par setState à chaque frame : tout le HUD — SVG, dock, boutons —
+  // était re-rendu 60 fois par seconde pendant chaque cooldown, et la boucle
+  // tournait en permanence, même sans cooldown. On écrit désormais directement
+  // les attributs du SVG, et la boucle ne vit que le temps d'un cooldown.
   useEffect(() => {
+    const paint = (color: string, blur: number) => {
+      borderRef.current?.setAttribute('stroke', color)
+      blurRef.current?.setAttribute('stdDeviation', String(blur))
+    }
+
     const loop = () => {
       const { cooldownEnd, cooldownDuration } = useCanvasStore.getState()
-      if (cooldownEnd && cooldownDuration > 0) {
-        const remaining = cooldownEnd - Date.now()
-        if (remaining > 0) {
-          const p = 1 - remaining / cooldownDuration
-          setBorderColor(interpolateColor(p))
-          setGlowBlur(4 + p * 8)
-        } else {
-          setBorderColor(BORDER_COLOR)
-          setGlowBlur(2)
-        }
-      } else {
-        setBorderColor(BORDER_COLOR)
-        setGlowBlur(2)
-      }
-      rafRef.current = requestAnimationFrame(loop)
+      const look = cooldownAppearance(Date.now(), cooldownEnd, cooldownDuration)
+      paint(look.color, look.blur)
+      rafRef.current = look.active ? requestAnimationFrame(loop) : 0
     }
-    rafRef.current = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(rafRef.current)
+
+    const start = () => {
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(loop)
+    }
+
+    start()  // un cooldown peut déjà être en cours au montage
+    const unsub = useCanvasStore.subscribe((s) => s.cooldownEnd, start)
+    return () => {
+      unsub()
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
   }, [])
 
   const { w, h } = vp
+  const inner = useMemo(() => innerPath(w, h), [w, h])
   if (!w || !h) return null
 
   return (
@@ -132,7 +131,7 @@ export function GameFrame({ username, onLogout }: Props) {
       >
         <defs>
           <filter id="border-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={glowBlur} result="blur" />
+            <feGaussianBlur ref={blurRef} in="SourceGraphic" stdDeviation={IDLE_APPEARANCE.blur} result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -143,14 +142,15 @@ export function GameFrame({ username, onLogout }: Props) {
         {/* Surface bezel */}
         <path
           fillRule="evenodd"
-          d={`${outerPath(w, h)} ${innerPath(w, h)}`}
+          d={`${outerPath(w, h)} ${inner}`}
           fill="#24283b"
         />
-        {/* Bordure avec glow */}
+        {/* Bordure avec glow — couleur pilotée par l'effet de cooldown */}
         <path
-          d={innerPath(w, h)}
+          ref={borderRef}
+          d={inner}
           fill="none"
-          stroke={borderColor}
+          stroke={IDLE_APPEARANCE.color}
           strokeWidth="1"
           filter="url(#border-glow)"
         />
