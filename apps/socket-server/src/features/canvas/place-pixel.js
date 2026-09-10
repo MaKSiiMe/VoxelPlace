@@ -9,6 +9,7 @@
 import { setPixel, getPixelMeta } from './grid.js'
 import { validatePixel } from './utils.js'
 import { incrementStats } from '../analytics/stats.js'
+import { logger } from '../../shared/logger.js'
 
 /** Plateformes qui n'ont pas de session web et sont donc exemptées de JWT. */
 const TRUSTED_BRIDGE_SOURCES = new Set(['minecraft'])
@@ -62,7 +63,7 @@ export async function placePixel({ redis, pool, cooldown }, data, { verifiedUser
   pool.query(
     'INSERT INTO pixel_history (x, y, color_id, username, source) VALUES ($1, $2, $3, $4, $5)',
     [pixel.x, pixel.y, pixel.colorId, pixel.username, pixel.source]
-  ).catch(err => console.error('[pixel_history]', err.message))
+  ).catch(err => logger.error({ err: err.message }, 'pixel_history'))
 
   return { ok: true, pixel, prevMeta, cooldownMs }
 }
@@ -77,7 +78,7 @@ async function isBanned(pool, username) {
     return rows.length > 0
   } catch (err) {
     // Base injoignable : on laisse passer plutôt que de bloquer tout le jeu.
-    console.error('[bans]', err.message)
+    logger.error({ err: err.message }, 'bans')
     return false
   }
 }

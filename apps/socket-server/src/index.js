@@ -22,6 +22,7 @@ import { getStats } from './features/analytics/stats.js'
 import { healthRoutes } from './features/health/routes.js'
 import { pool, connectWithRetry } from './shared/db.js'
 import { constantTimeEqual } from './shared/crypto.js'
+import { logger } from './shared/logger.js'
 import { checkRateLimit as checkAuthRateLimit } from './features/auth/rate-limit.js'
 import { PALETTE_HEX as COLORS } from './shared/palette.js'
 import { registerChatEvents } from './features/chat/events.js'
@@ -45,11 +46,13 @@ const TEST_USERNAMES = new Set(
 
 // --- Redis ---
 const redis = new Redis(REDIS_URL)
-redis.on('connect', () => console.log(`[Redis] Connecté à ${REDIS_URL}`))
-redis.on('error',   (err) => console.error('[Redis] Erreur :', err.message))
+redis.on('connect', () => logger.info(`[Redis] Connecté à ${REDIS_URL}`))
+redis.on('error',   (err) => logger.error({ err: err.message }, 'Redis injoignable'))
 
 // --- Fastify ---
-const fastify = Fastify({ logger: false })
+// logger partagé : Fastify trace chaque requête, et le reste du serveur
+// écrit dans le même flux (voir shared/logger.js)
+const fastify = Fastify({ loggerInstance: logger })
 await fastify.register(cors, { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'] })
 
 // PostgreSQL doit répondre avant l'enregistrement des routes : plusieurs
@@ -58,7 +61,7 @@ await fastify.register(cors, { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST',
 try {
   await connectWithRetry()
 } catch (err) {
-  console.error(err)
+  logger.error(err)
   process.exit(1)
 }
 // --- Routes REST (features) ---
@@ -106,7 +109,7 @@ const cooldown = createCooldownController({ pool, testUsernames: TEST_USERNAMES 
 
 // --- Socket.io événements ---
 io.on('connection', async (socket) => {
-  console.log(`[Socket] Connecté : ${socket.id}`)
+  logger.info(`[Socket] Connecté : ${socket.id}`)
 
   // Grille initiale + état des joueurs + stats.
   // Socket.io n'attend pas ce handler asynchrone : sans ce try/catch, une
@@ -127,7 +130,7 @@ io.on('connection', async (socket) => {
       stats:   await getStats(redis),
     })
   } catch (err) {
-    console.error('[grid:init]', err.message)
+    logger.error({ err: err.message }, 'grid:init')
     socket.emit('grid:error', { message: 'Grille temporairement indisponible' })
   }
 
@@ -155,7 +158,7 @@ io.on('connection', async (socket) => {
         stats:   await getStats(redis),
       })
     } catch (err) {
-      console.error('[grid:request]', err.message)
+      logger.error({ err: err.message }, 'grid:request')
       socket.emit('grid:error', { message: 'Grille temporairement indisponible' })
     }
   })
@@ -170,11 +173,11 @@ io.on('connection', async (socket) => {
     }
     const expected = process.env.ADMIN_PASSWORD
     if (!expected || !constantTimeEqual(password, expected)) {
-      console.warn(`[Admin] Tentative échouée depuis ${socket.id}`)
+      logger.warn(`[Admin] Tentative échouée depuis ${socket.id}`)
       return ack?.({ error: 'Mot de passe incorrect' })
     }
     socket.data.isAdmin = true
-    console.log(`[Admin] Accès accordé à ${socket.id}`)
+    logger.info(`[Admin] Accès accordé à ${socket.id}`)
     ack?.({ ok: true })
   })
 
@@ -186,10 +189,10 @@ io.on('connection', async (socket) => {
       const pixel = { x, y, colorId: 0, username: '[admin]', source: 'moderation' }
       await setPixel(redis, pixel)
       io.emit('pixel:update', pixel)
-      console.log(`[Admin] Pixel (${x},${y}) remis à blanc`)
+      logger.info(`[Admin] Pixel (${x},${y}) remis à blanc`)
       ack?.({ ok: true })
     } catch (err) {
-      console.error('[admin:clear]', err)
+      logger.error({ err: err }, 'admin:clear')
       ack?.({ error: 'Erreur serveur' })
     }
   })
@@ -201,10 +204,10 @@ io.on('connection', async (socket) => {
       const total = await clearGrid(redis)
       // Un seul signal : les clients redemandent la grille d'eux-mêmes
       io.emit('canvas:reload')
-      console.log('[Admin] Canvas entièrement remis à zéro')
+      logger.info('[Admin] Canvas entièrement remis à zéro')
       ack?.({ ok: true, cleared: total })
     } catch (err) {
-      console.error('[admin:clearAll]', err)
+      logger.error({ err: err }, 'admin:clearAll')
       ack?.({ error: 'Erreur serveur' })
     }
   })
@@ -232,7 +235,7 @@ io.on('connection', async (socket) => {
       // Le fil de discussion appartenait au propriétaire précédent
       if (ownerChanged) {
         resetPixelThread(io, pool, pixel.x, pixel.y)
-          .catch(err => console.error('[pixel:chat:reset]', err.message))
+          .catch(err => logger.error({ err: err.message }, 'pixel:chat:reset'))
       }
 
       // Progression du joueur — hors du chemin critique
@@ -243,7 +246,7 @@ io.on('connection', async (socket) => {
           const socketId = usernameToSocket.get(pixel.username.toLowerCase())
           if (socketId) io.to(socketId).emit('unlocks:new', { unlocks: newUnlocks })
         })
-        .catch(err => console.error('[unlocks]', err.message))
+        .catch(err => logger.error({ err: err.message }, 'unlocks'))
 
       if (ownerChanged) {
         processPixelLost(pool, prevMeta.username).catch(() => {})
@@ -263,7 +266,7 @@ io.on('connection', async (socket) => {
       const { role, streak } = await cooldown.getUser(pixel.username)
       ack?.({ ok: true, role, streak_hours: streak, cooldown: cooldownMs })
     } catch (err) {
-      console.error('[pixel:place]', err)
+      logger.error({ err: err }, 'pixel:place')
       ack?.({ error: 'Erreur serveur' })
     }
   })
@@ -274,7 +277,7 @@ io.on('connection', async (socket) => {
   registerPixelChatEvents(io, socket, connectedPlayers, pool, usernameToSocket)
 
   socket.on('disconnect', () => {
-    console.log(`[Socket] Déconnecté : ${socket.id}`)
+    logger.info(`[Socket] Déconnecté : ${socket.id}`)
     const player = connectedPlayers.get(socket.id)
     if (player) usernameToSocket.delete(player.username.toLowerCase())
     connectedPlayers.delete(socket.id)
@@ -295,7 +298,7 @@ await playerDashboardRoutes(fastify, { pool, gridSize: GRID_SIZE })
 // journalise bruyamment — ces rejets restent des bugs à corriger — sans couper
 // le service.
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason)
+  logger.error({ err: reason instanceof Error ? reason.stack : reason }, 'unhandledRejection')
 })
 
 // --- Démarrage ---
@@ -303,11 +306,11 @@ try {
   await initPixelChatTable(pool)
   await initUnlockTables(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
-  console.log(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
+  logger.info(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
   if (TEST_USERNAMES.size > 0) {
-    console.log(`[Rate limit] Comptes exemptés : ${[...TEST_USERNAMES].join(', ')}`)
+    logger.info(`[Rate limit] Comptes exemptés : ${[...TEST_USERNAMES].join(', ')}`)
   }
 } catch (err) {
-  console.error(err)
+  logger.error(err)
   process.exit(1)
 }

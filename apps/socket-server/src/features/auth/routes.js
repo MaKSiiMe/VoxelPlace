@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { unlockBaseNodes } from '../unlocks/engine.js'
 import { checkRateLimit } from './rate-limit.js'
+import { logger } from '../../shared/logger.js'
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '10', 10)
 
@@ -77,7 +78,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
       try {
         await unlockBaseNodes(pool, user.username)
       } catch (err) {
-        console.warn('[auth:register] unlockBaseNodes:', err.message)
+        logger.warn({ err: err.message }, 'auth:register — unlockBaseNodes')
       }
       const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
       reply.status(201).send({ token, username: user.username, role: user.role })
@@ -86,7 +87,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
       if (err.code === '23505') {
         return reply.status(409).send({ error: 'Pseudo déjà utilisé' })
       }
-      console.error('[auth:register]', err)
+      logger.error({ err: err }, 'auth:register')
       reply.status(500).send({ error: 'Erreur serveur' })
     }
   })
@@ -129,7 +130,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
       const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
       reply.send({ token, username: user.username, role: user.role })
     } catch (err) {
-      console.error('[auth:login]', err)
+      logger.error({ err: err }, 'auth:login')
       reply.status(500).send({ error: 'Erreur serveur' })
     }
   })
@@ -194,7 +195,7 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
 
       reply.send({ ok: true, message: 'Compte et données personnelles supprimés' })
     } catch (err) {
-      console.error('[auth:delete-account]', err)
+      logger.error({ err: err }, 'auth:delete-account')
       reply.status(500).send({ error: 'Erreur serveur' })
     }
   })

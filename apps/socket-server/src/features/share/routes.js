@@ -9,6 +9,7 @@ const { GIFEncoder, quantize, applyPalette } = gifenc
 import { loadGrid } from '../canvas/grid.js'
 import { PALETTE_RGB } from '../../shared/palette.js'
 import { parseZone, parsePositiveInt } from '../../shared/query.js'
+import { logger } from '../../shared/logger.js'
 
 // Identifiant public de 8 caractères. Math.random() n'est pas imprévisible :
 // les liens d'un utilisateur pourraient être devinés à partir des siens.
@@ -43,7 +44,7 @@ export async function shareRoutes(fastify, { pool, redis, gridSize }) {
     const { rowCount } = await pool.query(
       'DELETE FROM shared_zones WHERE expires_at IS NOT NULL AND expires_at < NOW()'
     )
-    if (rowCount > 0) console.log(`[share] ${rowCount} lien(s) expiré(s) supprimé(s)`)
+    if (rowCount > 0) logger.info(`[share] ${rowCount} lien(s) expiré(s) supprimé(s)`)
   }
   await purgeExpired()
   // unref : cette purge horaire ne doit pas empêcher le process (ni une suite

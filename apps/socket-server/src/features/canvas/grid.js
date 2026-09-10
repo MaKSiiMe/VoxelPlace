@@ -1,3 +1,4 @@
+import { logger } from '../../shared/logger.js'
 const GRID_SIZE = parseInt(process.env.GRID_SIZE ?? '2048', 10)
 const GRID_KEY = 'voxelplace:grid'
 const PIXELS_KEY = 'voxelplace:pixels'
@@ -17,7 +18,7 @@ export async function loadGrid(redis) {
   if (buf && buf.length === GRID_SIZE * GRID_SIZE) return buf
 
   if (buf) {
-    console.warn(`[loadGrid] Buffer taille incorrecte (${buf.length} au lieu de ${GRID_SIZE * GRID_SIZE}). Reconstruction depuis voxelplace:pixels…`)
+    logger.warn(`[loadGrid] Buffer taille incorrecte (${buf.length} au lieu de ${GRID_SIZE * GRID_SIZE}). Reconstruction depuis voxelplace:pixels…`)
   }
 
   const grid = Buffer.alloc(GRID_SIZE * GRID_SIZE, 0)
@@ -36,7 +37,7 @@ export async function loadGrid(redis) {
         }
       } catch { /* entrée corrompue, on l'ignore */ }
     }
-    if (count > 0) console.log(`[loadGrid] ${count} pixels restaurés depuis voxelplace:pixels.`)
+    if (count > 0) logger.info(`[loadGrid] ${count} pixels restaurés depuis voxelplace:pixels.`)
   }
 
   await redis.set(GRID_KEY, grid)
