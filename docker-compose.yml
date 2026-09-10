@@ -67,9 +67,14 @@ services:
       - voxelplace-api
 
   voxelplace-redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: voxelplace-redis
     restart: always
+    # NE JAMAIS rétrograder cette version : le volume redis_data contient un
+    # RDB écrit par la version en place, et Redis refuse de charger un RDB
+    # produit par une version plus récente que lui — il quitte au démarrage.
+    # Un passage de redis:latest à redis:7-alpine a ainsi mis la prod à terre.
+    #
     # Aucun port publié : Redis n'a pas de mot de passe, il ne doit jamais
     # être joignable ailleurs que sur le réseau interne Docker.
     volumes:
