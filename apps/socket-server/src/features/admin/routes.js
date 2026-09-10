@@ -14,20 +14,11 @@ import jwt from 'jsonwebtoken'
 import { checkRateLimit } from '../auth/rate-limit.js'
 import { clearGrid } from '../canvas/grid.js'
 import { isValidCoord } from '../canvas/utils.js'
+import { parsePositiveInt } from '../../shared/query.js'
 import { constantTimeEqual } from '../../shared/crypto.js'
 
 const ADMIN_ROLES = ['admin', 'superadmin']
 
-/**
- * Entier positif issu d'une query string, borné.
- * parseInt('abc') vaut NaN, qui partait tel quel dans « LIMIT $1 » et faisait
- * échouer la requête SQL avec une erreur 500.
- */
-function parsePositiveInt(raw, fallback, max) {
-  const n = Number(raw)
-  if (!Number.isInteger(n) || n <= 0) return fallback
-  return Math.min(n, max)
-}
 
 export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE }) {
 

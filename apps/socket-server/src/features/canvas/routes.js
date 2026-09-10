@@ -6,18 +6,7 @@
 
 import { loadGrid, getPixelMeta, GRID_SIZE } from './grid.js'
 import { PALETTE_HEX as COLORS } from '../../shared/palette.js'
-
-/**
- * Lit un entier de query string en refusant tout ce qui n'est pas un nombre.
- * parseInt('abc') vaut NaN et se propage silencieusement à travers les calculs
- * d'index : la fenêtre renvoyée était alors entièrement vide au lieu d'être
- * rejetée. On valide donc explicitement.
- */
-function parseIntStrict(raw, fallback) {
-  if (raw === undefined || raw === null || raw === '') return fallback
-  const n = Number(raw)
-  return Number.isInteger(n) ? n : NaN
-}
+import { parseIntStrict } from '../../shared/query.js'
 
 export async function canvasRoutes(fastify, { redis, pool }) {
 
