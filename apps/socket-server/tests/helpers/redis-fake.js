@@ -118,6 +118,27 @@ export class FakeRedis {
     return next
   }
 
+  /**
+   * Pipeline : accumule les commandes et les exécute à l'appel d'exec().
+   * Utilisé par la restauration du canvas depuis PostgreSQL.
+   */
+  pipeline() {
+    const queued = []
+    const chain = {
+      hset: (...args) => { queued.push(['hset', args]); return chain },
+      set:  (...args) => { queued.push(['set',  args]); return chain },
+      del:  (...args) => { queued.push(['del',  args]); return chain },
+      exec: async () => {
+        const results = []
+        for (const [cmd, args] of queued) {
+          results.push([null, await this[cmd](...args)])
+        }
+        return results
+      },
+    }
+    return chain
+  }
+
   async ping() {
     const fail = this.#check(); if (fail) return fail
     return 'PONG'

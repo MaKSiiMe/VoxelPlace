@@ -1,7 +1,18 @@
 // Fonctions utilitaires pures — testables indépendamment
 
+import { GRID_SIZE } from './grid.js'
+
+/**
+ * Une coordonnée valide est un entier à l'intérieur de la grille.
+ *
+ * La borne suit GRID_SIZE plutôt qu'un 2047 en dur : les deux se
+ * contrediraient dès que GRID_SIZE serait redéfini par l'environnement.
+ * Cette fonction garde tout ce qui atteint SETRANGE — une coordonnée hors
+ * bornes y devient un décalage arbitraire, et Redis agrandit alors le buffer
+ * jusqu'à cet index.
+ */
 export function isValidCoord(v) {
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 2047
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < GRID_SIZE
 }
 
 export function sanitizeUsername(raw) {

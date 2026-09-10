@@ -13,9 +13,21 @@
 import jwt from 'jsonwebtoken'
 import { checkRateLimit } from '../auth/rate-limit.js'
 import { clearGrid } from '../canvas/grid.js'
+import { isValidCoord } from '../canvas/utils.js'
 import { constantTimeEqual } from '../../shared/crypto.js'
 
 const ADMIN_ROLES = ['admin', 'superadmin']
+
+/**
+ * Entier positif issu d'une query string, borné.
+ * parseInt('abc') vaut NaN, qui partait tel quel dans « LIMIT $1 » et faisait
+ * échouer la requête SQL avec une erreur 500.
+ */
+function parsePositiveInt(raw, fallback, max) {
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n <= 0) return fallback
+  return Math.min(n, max)
+}
 
 export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE }) {
 
@@ -193,8 +205,11 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     if (!requireAdmin(req, reply)) return
 
     const { x, y, admin: adminName } = req.body || {}
-    if (typeof x !== 'number' || typeof y !== 'number') {
-      return reply.status(400).send({ error: 'x et y requis' })
+    // isValidCoord, pas un simple typeof : une coordonnée hors grille devient
+    // un décalage arbitraire dans SETRANGE, et Redis agrandit le buffer
+    // jusque-là — de quoi épuiser la mémoire depuis une seule requête.
+    if (!isValidCoord(x) || !isValidCoord(y)) {
+      return reply.status(400).send({ error: 'x et y doivent être des entiers dans la grille' })
     }
 
     const pixel = { x, y, colorId: 0, username: '[admin]', source: 'moderation' }
@@ -304,8 +319,10 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     if (!requireAdmin(req, reply)) return
 
     const { username } = req.params
+    // LOWER(...) comme à la vérification du ban : sans cela, bannir « Alice »
+    // puis débannir « alice » renvoie 404 et laisse le joueur bloqué.
     const { rowCount } = await pool.query(
-      'DELETE FROM bans WHERE username = $1',
+      'DELETE FROM bans WHERE LOWER(username) = LOWER($1)',
       [username]
     )
 
@@ -337,7 +354,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
   fastify.get('/api/admin/logs', async (req, reply) => {
     if (!requireAdmin(req, reply)) return
 
-    const limit  = Math.min(parseInt(req.query.limit ?? '100', 10), 500)
+    const limit  = parsePositiveInt(req.query.limit, 100, 500)
     const action = req.query.action ?? null
     const params = action ? [action, limit] : [limit]
     const where  = action ? `WHERE action = $1` : ''
@@ -353,7 +370,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
   // Logs publics — uniquement les bans, sans l'admin ni la raison interne
   // GET /api/moderation/logs?limit=50
   fastify.get('/api/moderation/logs', async (req, reply) => {
-    const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200)
+    const limit = parsePositiveInt(req.query.limit, 50, 200)
 
     const { rows } = await pool.query(
       `SELECT action, target, reason, created_at
