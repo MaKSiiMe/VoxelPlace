@@ -30,6 +30,11 @@ export async function placePixel({ redis, pool, cooldown }, data, { verifiedUser
     if (verifiedUsername.toLowerCase() !== pixel.username.toLowerCase()) {
       return { ok: false, error: 'Identité non autorisée' }
     }
+    // Le nom du jeton fait autorité : c'est celui enregistré en base. Le client
+    // peut envoyer « alice » pour le compte « Alice » — la comparaison ci-dessus
+    // l'accepte, mais laisser passer cette casse créerait une seconde ligne de
+    // progression (user_stats, user_color_counts sont indexées sur le pseudo).
+    pixel.username = verifiedUsername
   }
 
   // Les ponts de jeu appliquent leur propre rythme (un bloc posé à la main).

@@ -1,5 +1,10 @@
 // ── Moteur d'unlocks ─────────────────────────────────────────────────────────
 // Gère : streak en heures, compteurs de couleurs, stats joueur, unlocks auto/manuels
+//
+// Le pseudo reçu ici doit déjà être sous sa casse canonique — celle de la table
+// users. user_stats, user_color_counts et user_unlocks sont indexées dessus :
+// « Alice » et « alice » y ouvriraient deux progressions distinctes. La
+// normalisation a lieu en amont, dans placePixel, à partir du pseudo du jeton.
 
 import { TREE, BASE_COLOR_NODES, BASE_FEATURE_NODES } from './tree.js'
 

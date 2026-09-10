@@ -110,6 +110,19 @@ describe('placePixel — identité', { skip: skip() }, () => {
     assert.equal(res.ok, true)
   })
 
+  it('enregistre le pixel sous le pseudo du jeton, pas sous celui envoyé', async () => {
+    // Sans cette normalisation, « alice » et « Alice » ouvrent deux
+    // progressions distinctes : user_stats et user_color_counts sont indexées
+    // sur le pseudo tel qu'il arrive.
+    await createUser('Alice')
+    const res = await placePixel(deps, webPixel({ username: 'ALICE' }), asAlice)
+    assert.equal(res.ok, true)
+    assert.equal(res.pixel.username, 'Alice', 'le pseudo canonique doit primer')
+
+    const meta = await getPixelMeta(redis, 10, 20)
+    assert.equal(meta.username, 'Alice')
+  })
+
   it('laisse passer Minecraft sans JWT — le pont n\'a pas de session web', async () => {
     const res = await placePixel(deps, webPixel({ source: 'minecraft', username: 'Steve' }), {})
     assert.equal(res.ok, true)
