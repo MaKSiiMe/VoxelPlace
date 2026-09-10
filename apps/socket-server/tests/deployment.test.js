@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -152,6 +153,39 @@ describe('pipeline CI/CD', () => {
       .join('\n')
     assert.ok(!/\bsudo\b/.test(code),
       'sudo ne peut pas demander de mot de passe ici : utiliser docker cp')
+  })
+})
+
+describe('scripts npm', () => {
+  const pkg = JSON.parse(read('package.json'))
+
+  it('ne cible que des chemins présents dans le dépôt', () => {
+    // .gitignore contient tools/ : le dossier existe sur la machine de
+    // développement mais pas sur un dépôt cloné. Un script qui le vise passe
+    // en local et fait échouer la CI, où ESLint sort en erreur sur un motif
+    // sans correspondance.
+    const tracked = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    if (tracked.status !== 0) return  // hors dépôt Git : rien à vérifier
+
+    const files = tracked.stdout.split('\n').filter(Boolean)
+    const isTracked = (p) => files.some(f => f === p || f.startsWith(`${p}/`))
+
+    // Seuls les outils d'analyse sont concernés : ils échouent sur un motif
+    // sans correspondance. Une commande comme « rm -rf node_modules » vise
+    // légitimement un chemin non versionné.
+    const ANALYSERS = /^(eslint|tsc|vitest|prettier)\b/
+
+    for (const [name, command] of Object.entries(pkg.scripts ?? {})) {
+      if (!ANALYSERS.test(command.trim())) continue
+      for (const arg of command.split(/\s+/).slice(1)) {
+        if (arg.startsWith('-') || arg.includes('=') || arg.includes('*')) continue
+        if (!existsSync(join(ROOT, arg))) continue  // pas un chemin local
+        assert.ok(
+          isTracked(arg),
+          `le script "${name}" cible "${arg}", qui n'est pas versionné — il échouera en CI`
+        )
+      }
+    }
   })
 })
 

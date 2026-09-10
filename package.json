@@ -14,7 +14,7 @@
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean && rm -rf node_modules",
-    "lint:backend": "eslint apps/socket-server tools",
+    "lint:backend": "eslint apps/socket-server",
     "verify": "npm run lint:backend && npm run test:backend && npm run test:web && npm run build --workspace=apps/web",
     "test:backend": "npm test --workspace=apps/socket-server",
     "test:web": "npm test --workspace=apps/web"

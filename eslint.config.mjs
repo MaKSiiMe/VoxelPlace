@@ -12,6 +12,10 @@ import globals from 'globals'
  */
 export default [
   {
+    // tools/ est présent dans .gitignore : le linter sait le traiter si on le
+    // vise à la main en local, mais le script npm ne doit pas le cibler — le
+    // dossier n'existe pas sur un dépôt fraîchement cloné, et ESLint échoue
+    // sur un motif qui ne correspond à rien.
     files: ['apps/socket-server/**/*.js', 'tools/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2023,
