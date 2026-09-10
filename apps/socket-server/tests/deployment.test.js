@@ -155,6 +155,25 @@ describe('pipeline CI/CD', () => {
   })
 })
 
+describe('nginx', () => {
+  const nginx = read('nginx.conf')
+
+  it('route vers l\'API tout ce qu\'elle sert, /health compris', () => {
+    // /health vit sur l'API mais n'est pas sous /api/ : sans entrée dédiée,
+    // nginx l'envoie au frontend, qui répond par sa page 404.
+    for (const path of ['/api/', '/socket.io/', '/health']) {
+      const block = new RegExp(`location\\s*=?\\s*${path.replace(/\//g, '\\/')}\\s*\\{[^}]*proxy_pass\\s+http:\\/\\/api`)
+      assert.match(nginx, block, `${path} doit être proxifié vers l'API`)
+    }
+  })
+
+  it('conserve les en-têtes de mise à niveau WebSocket pour Socket.io', () => {
+    const socketBlock = nginx.slice(nginx.indexOf('location /socket.io/'))
+    assert.match(socketBlock, /proxy_set_header\s+Upgrade\s+\$http_upgrade/)
+    assert.match(socketBlock, /proxy_set_header\s+Connection\s+"upgrade"/)
+  })
+})
+
 describe('configuration', () => {
   it('documente dans .env.example les secrets lus par le backend', () => {
     const example = read('.env.example')
