@@ -12,6 +12,7 @@
 // échouer des tests pour des raisons qui n'existent pas en production.
 
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -53,9 +54,29 @@ export async function startTestDatabase() {
   const schema = readFileSync(INIT_SQL, 'utf8')
 
   if (process.env.TEST_DATABASE_URL) {
-    const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL })
+    // node:test exécute les fichiers en parallèle, chacun dans son process.
+    // Sur un serveur partagé, ils se videraient mutuellement leurs tables via
+    // truncateAll : chaque fichier reçoit donc sa propre base.
+    const dbName = `vp_test_${randomBytes(6).toString('hex')}`
+    const admin  = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL })
+    await admin.query(`CREATE DATABASE ${dbName}`)
+    await admin.end()
+
+    const url = new URL(process.env.TEST_DATABASE_URL)
+    url.pathname = `/${dbName}`
+    const pool = new pg.Pool({ connectionString: url.toString() })
     await pool.query(schema)
-    return { pool, skipped: false, cleanup: async () => { await pool.end() } }
+
+    return {
+      pool,
+      skipped: false,
+      cleanup: async () => {
+        await pool.end()
+        const cleaner = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL })
+        await cleaner.query(`DROP DATABASE IF EXISTS ${dbName}`)
+        await cleaner.end()
+      },
+    }
   }
 
   const bin = findPostgresBin()
