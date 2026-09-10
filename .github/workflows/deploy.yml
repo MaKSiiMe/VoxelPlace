@@ -50,6 +50,14 @@ jobs:
       - name: Run frontend tests
         run: npm test --workspace=apps/web
 
+      # Le build production type-check l'app, ce que les tests ne font pas.
+      # Sans cette étape, une erreur TypeScript passe la CI, fait échouer le
+      # build Docker sur le serveur, et l'ancienne image continue de tourner.
+      - name: Build frontend
+        run: npm run build --workspace=apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost
+
   deploy:
     name: Deploy
     needs: [test-backend, test-frontend]
@@ -69,6 +77,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: RCON_PASSWORD
           script: |
+            # -e : sans cela, un échec de "docker compose build" laissait
+            # "docker compose up -d" relancer l'image précédente, et le
+            # déploiement était rapporté comme réussi.
+            # Pas de pipefail : "git diff | grep -q" ci-dessous fait sortir
+            # git sur SIGPIPE, ce qui ferait échouer la détection du plugin.
+            set -eu
             cd /opt/voxelplace
             git fetch origin
             git reset --hard origin/main

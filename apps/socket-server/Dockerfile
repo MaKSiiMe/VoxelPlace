@@ -8,7 +8,7 @@ COPY package-lock.json ./
 
 # Package partagé (constants ROLE_COOLDOWNS, SUPERUSER_PREFIXES)
 COPY packages/types/package.json ./packages/types/
-COPY packages/types/src/roles.js ./packages/types/src/
+COPY packages/types/src/roles.constants.js ./packages/types/src/
 
 # Backend
 COPY apps/socket-server/package.json ./apps/socket-server/
