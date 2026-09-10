@@ -143,6 +143,22 @@ describe('pipeline CI/CD', () => {
       'sans set -e, un build raté laisse redémarrer l\'image précédente en silence')
   })
 
+  it('applique les changements de nginx.conf, que « up -d » ne recrée pas', () => {
+    // nginx.conf est monté en volume : modifier le fichier ne change pas la
+    // définition du service, donc « docker compose up -d » laisse le conteneur
+    // tourner avec l'ancienne configuration. Le correctif de /health est ainsi
+    // resté sans effet.
+    const compose = read('docker-compose.yml')
+    if (!/nginx\.conf:\/etc\/nginx/.test(compose)) return  // plus monté : rien à recharger
+
+    const script = workflow.slice(workflow.indexOf('script: |'))
+      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
+    assert.match(script, /--force-recreate voxelplace-nginx|restart voxelplace-nginx|nginx -s reload/,
+      'le déploiement doit recharger nginx quand sa configuration change')
+    assert.match(script, /nginx -t/,
+      'la configuration doit être validée avant d\'être appliquée')
+  })
+
   it('ne dépend pas de sudo, indisponible dans un shell SSH sans terminal', () => {
     const script = workflow.slice(workflow.indexOf('script: |'))
     // Les commentaires du script sont exclus : ils expliquent justement

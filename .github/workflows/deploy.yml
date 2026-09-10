@@ -127,6 +127,23 @@ jobs:
             git reset --hard origin/main
             docker compose build voxelplace-api voxelplace-web
             docker compose up -d
+
+            # nginx.conf est monté depuis le dépôt. « up -d » ne recrée pas un
+            # conteneur dont seul le contenu d'un fichier monté a changé : nginx
+            # garde alors l'ancienne configuration en mémoire, et le montage d'un
+            # fichier unique pointe même encore vers l'ancien inode après le
+            # « git reset ». On compare donc ce que voit le conteneur au fichier
+            # du dépôt — idempotent, y compris si un déploiement précédent a
+            # échoué en cours de route.
+            if ! docker exec voxelplace-nginx cat /etc/nginx/conf.d/default.conf 2>/dev/null | cmp -s - nginx.conf; then
+              # Validation dans un conteneur jetable, sur le réseau du projet pour
+              # que les upstreams se résolvent. Une configuration invalide arrête
+              # le déploiement (set -e) avant de toucher au nginx en service.
+              docker compose run --rm --no-deps -T voxelplace-nginx nginx -t
+              docker compose up -d --force-recreate voxelplace-nginx
+              echo "[deploy] Configuration nginx rechargée."
+            fi
+
             docker image prune -f
             if git diff HEAD@{1} HEAD --name-only | grep -q '^apps/game-bridges/minecraft/'; then
               mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
