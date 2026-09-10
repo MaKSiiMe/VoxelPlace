@@ -46,6 +46,15 @@ redis.on('error',   (err) => console.error('[Redis] Erreur :', err.message))
 const fastify = Fastify({ logger: false })
 await fastify.register(cors, { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE'] })
 
+// PostgreSQL doit répondre avant l'enregistrement des routes : plusieurs
+// features créent leur table à l'inscription (shareRoutes, pixelChat, unlocks).
+// Sans cette attente, un démarrage plus rapide que la base tue le process.
+try {
+  await connectWithRetry()
+} catch (err) {
+  console.error(err)
+  process.exit(1)
+}
 // --- Routes REST (features) ---
 await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
 await playerRoutes(fastify, { pool })
@@ -117,6 +126,26 @@ fastify.get('/api/grid/window', async (req, reply) => {
     }
   }
   reply.send({ grid: window, offsetX: ox, offsetZ: oz, width: w, height: h, colors: COLORS })
+})
+
+// Santé du service — distingue « process vivant » de « dépendances joignables ».
+// Répond 200 tant que Node tourne, avec le détail par dépendance, et 503 si
+// l'une d'elles est tombée. Utilisé par le HEALTHCHECK Docker.
+fastify.get('/health', async (_req, reply) => {
+  const checks = await Promise.allSettled([
+    redis.ping(),
+    pool.query('SELECT 1'),
+  ])
+  const deps = {
+    redis:    checks[0].status === 'fulfilled' ? 'ok' : 'down',
+    postgres: checks[1].status === 'fulfilled' ? 'ok' : 'down',
+  }
+  const healthy = Object.values(deps).every(v => v === 'ok')
+  reply.status(healthy ? 200 : 503).send({
+    status:    healthy ? 'ok' : 'degraded',
+    uptime_s:  Math.round(process.uptime()),
+    deps,
+  })
 })
 
 fastify.get('/api/stats', async (_req, reply) => {
@@ -312,15 +341,24 @@ setInterval(() => {
 io.on('connection', async (socket) => {
   console.log(`[Socket] Connecté : ${socket.id}`)
 
-  // Grille initiale + état des joueurs + stats
-  const buf = await loadGrid(redis)
-  socket.emit('grid:init', {
-    grid:    Array.from(buf),
-    size:    GRID_SIZE,
-    colors:  COLORS,
-    players: getPlayersPayload(),
-    stats:   await getStats(),
-  })
+  // Grille initiale + état des joueurs + stats.
+  // Socket.io n'attend pas ce handler asynchrone : sans ce try/catch, une
+  // indisponibilité de Redis produit une promesse rejetée non gérée, que Node
+  // traite par défaut en terminant le process. Une panne Redis doit dégrader
+  // la connexion, pas mettre l'API à terre.
+  try {
+    const buf = await loadGrid(redis)
+    socket.emit('grid:init', {
+      grid:    Array.from(buf),
+      size:    GRID_SIZE,
+      colors:  COLORS,
+      players: getPlayersPayload(),
+      stats:   await getStats(),
+    })
+  } catch (err) {
+    console.error('[grid:init]', err.message)
+    socket.emit('grid:error', { message: 'Grille temporairement indisponible' })
+  }
 
   // Le client annonce son pseudo et sa plateforme
   socket.on('player:join', ({ username, source } = {}) => {
@@ -336,14 +374,19 @@ io.on('connection', async (socket) => {
 
   // Renvoie la grille au client qui la demande (après canvas:reload)
   socket.on('grid:request', async () => {
-    const buf = await loadGrid(redis)
-    socket.emit('grid:init', {
-      grid:    Array.from(buf),
-      size:    GRID_SIZE,
-      colors:  COLORS,
-      players: getPlayersPayload(),
-      stats:   await getStats(),
-    })
+    try {
+      const buf = await loadGrid(redis)
+      socket.emit('grid:init', {
+        grid:    Array.from(buf),
+        size:    GRID_SIZE,
+        colors:  COLORS,
+        players: getPlayersPayload(),
+        stats:   await getStats(),
+      })
+    } catch (err) {
+      console.error('[grid:request]', err.message)
+      socket.emit('grid:error', { message: 'Grille temporairement indisponible' })
+    }
   })
 
   // Authentification admin
@@ -511,9 +554,17 @@ await profileRoutes(fastify, { pool })
 await globalDashboardRoutes(fastify, { pool })
 await playerDashboardRoutes(fastify, { pool, gridSize: GRID_SIZE })
 
+// Filet de dernier recours. Node termine le process sur une promesse rejetée
+// non gérée : pour un serveur temps réel, cela déconnecte tous les joueurs et
+// leur fait recharger 4 Mo de grille à cause d'une seule requête ratée. On
+// journalise bruyamment — ces rejets restent des bugs à corriger — sans couper
+// le service.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason)
+})
+
 // --- Démarrage ---
 try {
-  await connectWithRetry()
   await initPixelChatTable(pool)
   await initUnlockTables(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })

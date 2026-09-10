@@ -91,8 +91,15 @@ jobs:
             docker image prune -f
             if git diff HEAD@{1} HEAD --name-only | grep -q '^apps/game-bridges/minecraft/'; then
               mvn -f apps/game-bridges/minecraft/pom.xml clean package -q
-              sudo cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
-                /var/lib/docker/volumes/minecraft-server_mc_data/_data/plugins/VoxelPlace.jar
+              # "sudo cp" vers le volume échouait : le shell SSH n'est pas un
+              # terminal, sudo ne peut pas demander de mot de passe. Sans set -e
+              # l'échec passait inaperçu et le plugin n'était jamais mis à jour.
+              # docker cp écrit dans le conteneur sans privilèges élevés.
+              MC_DEST=$(docker inspect minecraft-paper \
+                --format '{{range .Mounts}}{{if eq .Name "minecraft-server_mc_data"}}{{.Destination}}{{end}}{{end}}' || true)
+              MC_DEST=${MC_DEST:-/data}
+              docker cp apps/game-bridges/minecraft/target/VoxelPlace.jar \
+                "minecraft-paper:${MC_DEST}/plugins/VoxelPlace.jar"
               docker restart minecraft-paper
               echo "[deploy] Plugin Minecraft mis à jour."
             else
