@@ -112,8 +112,28 @@ export async function startTestDatabase() {
   }
 }
 
+/**
+ * Attend que le pool n'ait plus aucune requête en vol.
+ *
+ * Le code de production écrit volontairement sans `await` — l'insertion dans
+ * pixel_history ne doit pas retarder l'affichage du pixel. En test, une de ces
+ * écritures peut atterrir *après* le TRUNCATE du test suivant et y laisser une
+ * ligne fantôme : de quoi faire échouer, de loin en loin, un test qui vérifie
+ * qu'une table est vide.
+ */
+async function waitForIdlePool(pool, timeout = 2000) {
+  const deadline = Date.now() + timeout
+  while (pool.totalCount - pool.idleCount > 0 && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 5))
+  }
+  // Un tour de boucle supplémentaire : une requête peut avoir été rendue au
+  // pool sans que sa promesse ait encore été résolue.
+  await new Promise(r => setImmediate(r))
+}
+
 /** Vide toutes les tables entre deux tests, sans retoucher au schéma. */
 export async function truncateAll(pool) {
+  await waitForIdlePool(pool)
   await pool.query(`
     TRUNCATE users, pixel_history, shared_zones, bans, moderation_logs,
              reports, user_stats, user_color_counts, user_unlocks, pixel_messages
