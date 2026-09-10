@@ -36,6 +36,26 @@ beforeEach(async () => {
   await loadGrid(redis)
 })
 
+/**
+ * Attend qu'une condition devienne vraie, en interrogeant régulièrement.
+ * L'insertion dans pixel_history est volontairement non attendue par le code :
+ * un délai fixe suffirait la plupart du temps, mais pas quand toute la suite
+ * s'exécute en parallèle — d'où cette attente conditionnelle.
+ */
+async function waitFor(condition, { timeout = 3000, interval = 10 } = {}) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    if (await condition()) return true
+    if (Date.now() > deadline) return false
+    await new Promise(r => setTimeout(r, interval))
+  }
+}
+
+const countHistory = async () => {
+  const { rows } = await db.pool.query('SELECT count(*)::int AS n FROM pixel_history')
+  return rows[0].n
+}
+
 const webPixel = (over = {}) => ({ x: 10, y: 20, colorId: 5, username: 'Alice', source: 'web', ...over })
 const asAlice  = { verifiedUsername: 'Alice' }
 
@@ -72,10 +92,9 @@ describe('placePixel — cas nominal', { skip: skip() }, () => {
     await createUser('Alice')
     await placePixel(deps, webPixel(), asAlice)
 
-    // L'insertion est délibérément non attendue : on laisse le tour de boucle passer
-    await new Promise(r => setTimeout(r, 50))
+    assert.ok(await waitFor(async () => (await countHistory()) === 1), 'la pose doit être journalisée')
+
     const { rows } = await db.pool.query('SELECT username, color_id FROM pixel_history')
-    assert.equal(rows.length, 1)
     assert.equal(rows[0].username, 'Alice')
   })
 
@@ -211,9 +230,11 @@ describe('placePixel — données invalides', { skip: skip() }, () => {
 
   it('ne laisse aucune trace en base après un rejet', async () => {
     await placePixel(deps, webPixel({ colorId: 99 }), asAlice)
-    await new Promise(r => setTimeout(r, 50))
-    const { rows } = await db.pool.query('SELECT count(*)::int AS n FROM pixel_history')
-    assert.equal(rows[0].n, 0)
+
+    // Rien ne doit apparaître : on laisse une fenêtre large pour qu'une
+    // insertion parasite ait le temps de se manifester si elle existe.
+    const appeared = await waitFor(async () => (await countHistory()) > 0, { timeout: 300 })
+    assert.equal(appeared, false, 'un pixel rejeté ne doit rien journaliser')
   })
 })
 

@@ -155,6 +155,25 @@ describe('pipeline CI/CD', () => {
   })
 })
 
+describe('versions Node', () => {
+  it('teste et déploie sur la même version majeure', () => {
+    // La CI validait sur Node 22 pendant que la production tournait sur Node 20 :
+    // du code vérifié sur une version partait s'exécuter sur une autre.
+    const workflow = read('.github/workflows/deploy.yml')
+    const ciVersions = new Set(
+      [...workflow.matchAll(/node-version:\s*'?(\d+)/g)].map(m => m[1])
+    )
+    assert.equal(ciVersions.size, 1, `la CI utilise plusieurs versions : ${[...ciVersions].join(', ')}`)
+    const ci = [...ciVersions][0]
+
+    for (const dockerfile of ['apps/socket-server/Dockerfile', 'apps/web/Dockerfile']) {
+      for (const [, version] of read(dockerfile).matchAll(/FROM node:(\d+)/g)) {
+        assert.equal(version, ci, `${dockerfile} construit sur Node ${version}, la CI teste sur Node ${ci}`)
+      }
+    }
+  })
+})
+
 describe('nginx', () => {
   const nginx = read('nginx.conf')
 

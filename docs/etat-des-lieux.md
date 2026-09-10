@@ -6,6 +6,11 @@
 >
 > Cet audit porte sur le **code**. L'audit des **documents RNCP** est dans
 > `docs/audit-verification-dossier.md`.
+>
+> **État au 10 septembre 2026, après la passe de fiabilisation :** les points 1 à 11 sont
+> traités, ainsi que la majeure partie de la dette listée plus bas. Le détail de ce qui a
+> été corrigé — et de ce que la mise sous tests a fait apparaître ensuite — se trouve en
+> fin de document, section « Ce qui a été traité ».
 
 ---
 
@@ -173,3 +178,65 @@ nativement via JSON Schema, ce qui supprimerait ces vérifications manuelles.
 3. **Performance** — protocole binaire (3) et rendu incrémental (4), les deux plafonds réels.
 4. **Robustesse** — cooldowns dans Redis (5), journalisation (10), schémas de validation (11).
 5. **Nettoyage** — code mort, duplications, découpage d'`index.js`, README.
+
+
+---
+
+## Ce qui a été traité
+
+### Les bloquants et les points sérieux
+
+| # | Point | Traitement |
+|---|-------|-----------|
+| 1 | `verifyToken` non importé | Middleware extrait dans `features/auth/socket-auth.js`, erreurs absorbées, couvert par un test d'intégration Socket.io réel |
+| 2 | `admin:clearAll` en 4,2 M d'écritures | `clearGrid()` : un `SET`, un `DEL`, un seul `canvas:reload`. Le plugin Minecraft sait désormais y réagir |
+| 3 | Grille transportée en JSON | **Non traité** — voir ci-dessous |
+| 4 | Rendu front : 20 Mo par pixel | **Non traité** — voir ci-dessous |
+| 5 | Cooldown en mémoire | Extrait dans `features/canvas/cooldown.js`, horloge injectable, 15 tests. Reste en mémoire : documenté comme limite au déploiement mono-instance |
+| 6 | Aucun test d'intégration | 245 tests backend contre un vrai PostgreSQL 16 |
+| 7 | `/api/admin/login` non limité | Rate limit 5/min + comparaison à temps constant, sur la route REST **et** l'événement socket |
+| 8 | Bases publiées sur toutes les interfaces | PostgreSQL sur la loopback, Redis interne, versions épinglées |
+| 9 | Dépendance Redis non déclarée | Ajoutée à `depends_on` |
+| 10 | Pas de journalisation structurée | **Non traité** |
+| 11 | Aucune validation des paramètres | `shared/query.js`, adopté par toutes les routes |
+
+### Ce que la mise sous tests a révélé
+
+Ces défauts n'étaient pas dans l'audit initial : ils sont apparus en écrivant les tests.
+
+- **Le build frontend échouait depuis le 8 juin** — `roles.ts` réexportait depuis `./roles.js`,
+  que TypeScript résout vers lui-même. La CI ne construisait pas, le script de déploiement
+  n'avait pas de `set -e` : l'API était redéployée pendant que le conteneur web gardait une
+  image d'avant juin. D'où l'erreur CSRF à la connexion, insoluble côté serveur.
+- **Contournement d'authentification sur les signalements** — la feature avait son propre
+  `requireAdmin`, qui décodait le jeton en base64 **sans vérifier la signature** et lisait un
+  champ `isAdmin` que personne n'émet. Ouvert aux jetons forgés, fermé aux vrais
+  administrateurs. Implémentation désormais unique et partagée.
+- **Épuisement mémoire depuis `/api/admin/pixel/clear`** — un `typeof x === 'number'` sans
+  bornes laissait passer n'importe quel entier vers `SETRANGE`, que Redis honore en
+  agrandissant le buffer jusqu'à l'index demandé.
+- **Progression dupliquée par la casse du pseudo** — `alice` et `Alice` ouvraient deux
+  progressions parallèles. Le pseudo du jeton fait désormais autorité.
+- **Suppression RGPD incomplète** — `unlockBaseNodes`, lancé sans `await` à l'inscription,
+  réinsérait des lignes après la suppression du compte. La suppression est passée en transaction.
+- **Débannissement sensible à la casse** — bannir « Alice » puis débannir « alice » renvoyait
+  404 et laissait le joueur bloqué.
+- **Une panne Redis tuait le process** — `io.on('connection')` faisait `await loadGrid` sans
+  `try/catch` ; Socket.io n'attendant pas le handler, le rejet non géré terminait Node.
+- **`/health` inaccessible** — nginx ne routait que `/api/` et `/socket.io/`.
+- **Test et production sur des versions Node différentes** — CI sur 22, Dockerfiles sur 20.
+
+### Ce qui reste ouvert
+
+Par ordre de valeur :
+
+1. **Performance du canvas** (points 3 et 4) — la grille transite en JSON (~10 Mo par
+   connexion) et le client réalloue 20 Mo à chaque pixel reçu. Ce sont les deux vrais
+   plafonds ; ils demandent un protocole binaire et un rendu incrémental.
+2. **Journalisation structurée** (point 10) — Fastify embarque Pino, aucune requête n'est tracée.
+3. **Couverture restante** — le chat, le timelapse et les dashboards joueur n'ont pas de tests ;
+   le frontend n'est couvert que sur ses stores et utilitaires, pas ses composants ; le plugin
+   Java n'a aucun test.
+4. **Code mort** — `packages/db/` (Drizzle) et les deux fichiers de prévisualisation de 229 Ko
+   dans `tools/`.
+5. **`GameFrame.tsx`** — `setState` React à chaque frame pour animer la bordure du cooldown.
