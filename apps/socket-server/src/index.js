@@ -74,7 +74,9 @@ await analyticsRoutes(fastify, { pool, redis })
 // --- Socket.io ---
 const io = new Server(fastify.server, {
   cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'] },
-  maxHttpBufferSize: 64e6, // 64MB pour grid:init (4MB buffer → ~8MB JSON)
+  // 8 Mo : la grille binaire en fait 4, le reste est de la marge. La valeur
+  // était à 64 Mo du temps où grid:init transportait du JSON.
+  maxHttpBufferSize: 8e6,
 })
 
 // Vérifie le JWT du handshake — les viewers sans token restent acceptés en lecture seule
@@ -114,7 +116,11 @@ io.on('connection', async (socket) => {
   try {
     const buf = await loadGrid(redis)
     socket.emit('grid:init', {
-      grid:    Array.from(buf),
+      // Le buffer part tel quel : Socket.io le transporte en binaire. En
+      // JSON, ces 4 Mo devenaient 4 194 304 entiers sérialisés, soit une
+      // dizaine de mégaoctets de texte à produire, transmettre et parser à
+      // chaque connexion.
+      grid:    buf,
       size:    GRID_SIZE,
       colors:  COLORS,
       players: getPlayersPayload(),
@@ -142,7 +148,7 @@ io.on('connection', async (socket) => {
     try {
       const buf = await loadGrid(redis)
       socket.emit('grid:init', {
-        grid:    Array.from(buf),
+        grid:    buf,
         size:    GRID_SIZE,
         colors:  COLORS,
         players: getPlayersPayload(),
