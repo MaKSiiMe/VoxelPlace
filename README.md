@@ -7,14 +7,14 @@
 *Projet de fin d'année — Holberton School · Validation RNCP 6 (CDA)*
 
 [![Deploy](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/deploy.yml/badge.svg)](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/deploy.yml)
-[![Tests](https://img.shields.io/badge/tests-35%20passing-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-298%20passing-brightgreen)](#tests)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev)
 [![Socket.io](https://img.shields.io/badge/Socket.io-4-010101?logo=socket.io)](https://socket.io)
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![Redis](https://img.shields.io/badge/Redis-8-DC382D?logo=redis&logoColor=white)](https://redis.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docker.com)
 [![Turborepo](https://img.shields.io/badge/Turborepo-2-EF4444?logo=turborepo&logoColor=white)](https://turborepo.dev)
@@ -85,10 +85,10 @@ graph TB
 | Couche | Technologie | Justification |
 |--------|-------------|---------------|
 | Monorepo | **Turborepo 2** | Build orchestré, cache partagé |
-| Runtime | **Node.js 20** | ESM natif, performances I/O async |
+| Runtime | **Node.js 22** | ESM natif, performances I/O async |
 | Framework HTTP | **Fastify 5** | 2× plus rapide qu'Express |
 | Temps réel | **Socket.io 4** | WebSocket avec fallback, rooms |
-| Grille pixels | **Redis 7** | Lecture O(1), buffer binaire 4 Mo |
+| Grille pixels | **Redis 8** | Lecture O(1), buffer binaire 4 Mo |
 | Base de données | **PostgreSQL 16** | ACID, requêtes préparées, historique complet |
 | Auth | **bcryptjs + JWT** | Hachage 10 rounds, tokens 7 jours |
 | Frontend | **Next.js 16 App Router** | SSR/CSR hybride, Turbopack |
@@ -320,22 +320,51 @@ Les couleurs sont débloquées progressivement via le **skill tree**.
 ## Tests
 
 ```bash
-cd apps/socket-server
-npm test
+npm run verify          # lint + tests backend + tests frontend + build
 ```
 
-**35 tests unitaires** — Node.js test runner natif, zéro dépendance externe :
+**298 tests** — 245 côté backend (`node:test`), 53 côté frontend (Vitest).
 
-| Fichier | Tests | Couvre |
-|---------|-------|--------|
-| `auth.test.js` | 10 | `hashPassword`, `verifyPassword`, `signToken`, `verifyToken` |
-| `validation.test.js` | 18 | `isValidCoord`, `sanitizeUsername`, `validatePixel` |
-| `report.test.js` | 6 | `validateReport` — pixel, joueur, champs optionnels |
-| `grid.test.js` | 7 | `GRID_SIZE`, `getPixelIndex` |
+Les tests backend tournent contre un **vrai PostgreSQL 16**, la version de
+production : un émulateur en mémoire ne sait pas exécuter les requêtes
+analytiques du projet (`LAG OVER`, `date_trunc`, `INTERVAL`) et ferait échouer
+des tests pour des raisons inexistantes en production. Le helper démarre un
+cluster temporaire avec les binaires locaux — sans Docker ni privilèges root —
+ou utilise `TEST_DATABASE_URL` quand la CI fournit un service container.
 
-Les tests s'exécutent automatiquement dans le pipeline CI/CD avant chaque déploiement.
+Redis est remplacé par un double qui n'implémente que les commandes réellement
+utilisées, avec leur sémantique binaire : le canvas repose sur `SETRANGE`
+appliqué à un buffer de 4 Mo, qu'il faut reproduire fidèlement.
 
----
+| Domaine | Fichiers | Tests |
+|---------|----------|-------|
+| Canvas & pose de pixel | `place-pixel`, `canvas-redis`, `canvas-routes`, `grid`, `validation` | 70 |
+| Administration & modération | `admin-routes`, `report-routes`, `report` | 54 |
+| Authentification | `auth-routes`, `auth`, `socket-auth`, `rate-limit` | 38 |
+| Zones & partage | `zone-share` | 18 |
+| Progression (skill tree) | `unlocks-engine` | 16 |
+| Cooldown | `cooldown` | 15 |
+| Déploiement & infrastructure | `deployment` | 17 |
+| Joueurs & profils | `players-profile` | 10 |
+| Synchronisation de la palette | `palette-sync` | 7 |
+
+Deux familles méritent une mention.
+
+`deployment.test.js` relit les fichiers d'infrastructure plutôt que du code :
+les `COPY` des Dockerfiles doivent pointer des fichiers existants, la CI doit
+construire le frontend et pas seulement le tester, le script de déploiement doit
+s'arrêter à la première erreur et ne pas dépendre de `sudo`, les bases ne doivent
+pas être publiées sur toutes les interfaces, et l'image Redis ne doit jamais
+être rétrogradée. Chacun de ces tests correspond à une panne réellement survenue.
+
+`palette-sync.test.js` verrouille l'invariant le plus fragile du projet : les
+16 couleurs existent en trois exemplaires — backend, store frontend et blocs de
+béton du plugin Minecraft — sans rien qui les relie à la compilation. Le test
+échoue si une seule couleur diverge.
+
+Le lint (`no-undef`) fait partie de la vérification : le backend est du
+JavaScript sans étape de compilation, et c'est cette règle qui attrape un
+identifiant utilisé sans import.
 
 ## Déploiement & CI/CD
 
@@ -353,8 +382,9 @@ Les tests s'exécutent automatiquement dans le pipeline CI/CD avant chaque dépl
 
 ```
 git push main  (ou déclenchement manuel via workflow_dispatch)
-  → job test-backend  : Node 22 — npm test (35 tests, BCRYPT_ROUNDS=1)
-  → job test-frontend : Node 22 — npm test --workspace=apps/web
+  → job lint          : ESLint sur le backend (bloquant)
+  → job test-backend  : Node 22 + service PostgreSQL 16 — 245 tests
+  → job test-frontend : Node 22 — 53 tests + build Next.js (type-check)
   → job deploy        : Tailscale VPN → SSH → git reset --hard
                         → docker compose build voxelplace-api voxelplace-web
                         → docker compose up -d

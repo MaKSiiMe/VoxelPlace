@@ -3,14 +3,22 @@
 // GET  /api/share/:id      → récupère les infos d'une zone partagée
 // GET  /api/share/:id/gif  → télécharge le GIF de la zone partagée
 
+import { randomBytes } from 'node:crypto'
 import gifenc from 'gifenc'
 const { GIFEncoder, quantize, applyPalette } = gifenc
 import { loadGrid } from '../canvas/grid.js'
 import { PALETTE_RGB } from '../../shared/palette.js'
+import { parseZone, parsePositiveInt } from '../../shared/query.js'
 
-// Génère un ID court de 8 caractères alphanumériques
+// Identifiant public de 8 caractères. Math.random() n'est pas imprévisible :
+// les liens d'un utilisateur pourraient être devinés à partir des siens.
+const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+
 function generateId() {
-  return Math.random().toString(36).slice(2, 10).padEnd(8, '0')
+  const bytes = randomBytes(8)
+  let id = ''
+  for (const b of bytes) id += ID_ALPHABET[b % ID_ALPHABET.length]
+  return id
 }
 
 export async function shareRoutes(fastify, { pool, redis, gridSize }) {
@@ -38,17 +46,18 @@ export async function shareRoutes(fastify, { pool, redis, gridSize }) {
     if (rowCount > 0) console.log(`[share] ${rowCount} lien(s) expiré(s) supprimé(s)`)
   }
   await purgeExpired()
-  setInterval(purgeExpired, 60 * 60 * 1000)
+  // unref : cette purge horaire ne doit pas empêcher le process (ni une suite
+  // de tests) de se terminer.
+  setInterval(purgeExpired, 60 * 60 * 1000).unref()
 
   // Crée un lien de partage
   // POST /api/share
   // Body : { x, y, w, h, label?, created_by?, expires_in_days? }
   fastify.post('/api/share', async (req, reply) => {
     const { label, created_by, expires_in_days } = req.body || {}
-    const x = Math.max(0, parseInt(req.body?.x ?? 0, 10))
-    const y = Math.max(0, parseInt(req.body?.y ?? 0, 10))
-    const w = Math.min(gridSize - x, Math.max(1, parseInt(req.body?.w ?? 64, 10)))
-    const h = Math.min(gridSize - y, Math.max(1, parseInt(req.body?.h ?? 64, 10)))
+    const zone = parseZone(req.body ?? {}, gridSize)
+    if (!zone) return reply.status(400).send({ error: 'Paramètres x, y, w, h : entiers attendus' })
+    const { x, y, w, h } = zone
 
     // Limite à 20 liens permanents par utilisateur
     if (!expires_in_days && created_by) {
@@ -62,16 +71,28 @@ export async function shareRoutes(fastify, { pool, redis, gridSize }) {
       }
     }
 
-    const id         = generateId()
-    const expires_at = expires_in_days
-      ? new Date(Date.now() + parseInt(expires_in_days, 10) * 86400000)
+    const days       = Number(expires_in_days)
+    const expires_at = Number.isInteger(days) && days > 0
+      ? new Date(Date.now() + days * 86400000)
       : null
 
-    await pool.query(
-      `INSERT INTO shared_zones (id, x, y, w, h, label, created_by, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, x, y, w, h, label ?? null, created_by ?? null, expires_at]
-    )
+    // Réessaie en cas de collision d'identifiant : sans cela, la violation de
+    // clé primaire remonterait en erreur 500 au lieu d'un simple nouveau tirage.
+    let id
+    for (let attempt = 0; ; attempt++) {
+      id = generateId()
+      try {
+        await pool.query(
+          `INSERT INTO shared_zones (id, x, y, w, h, label, created_by, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [id, x, y, w, h, label ?? null, created_by ?? null, expires_at]
+        )
+        break
+      } catch (err) {
+        // 23505 = violation de contrainte unique
+        if (err.code !== '23505' || attempt >= 4) throw err
+      }
+    }
 
     reply.status(201).send({
       id,
@@ -130,8 +151,8 @@ export async function shareRoutes(fastify, { pool, redis, gridSize }) {
     }
 
     const { x, y, w, h } = zone
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '4',  10), 1), 16)
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 4, 16)
 
     const pixels = await pool.query(
       `SELECT x, y, color_id AS "colorId"

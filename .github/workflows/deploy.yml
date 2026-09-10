@@ -10,9 +10,47 @@ permissions:
   actions: read
 
 jobs:
+  lint:
+    name: Lint backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - run: npm install
+
+      # no-undef attrape les identifiants utilisés sans import — la classe de
+      # bug qui a mis l'API à terre (verifyToken appelé sans être importé).
+      - name: ESLint
+        run: npm run lint:backend
+
   test-backend:
     name: Tests backend
     runs-on: ubuntu-latest
+
+    # Les tests tournent contre un vrai PostgreSQL, à la version de production :
+    # les requêtes analytiques (LAG OVER, date_trunc, INTERVAL) ne sont pas
+    # reproductibles avec un émulateur en mémoire.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     voxelplace
+          POSTGRES_PASSWORD: voxelplace
+          POSTGRES_DB:       postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxelplace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +67,8 @@ jobs:
         working-directory: apps/socket-server
         run: npm test
         env:
-          BCRYPT_ROUNDS: 1
+          BCRYPT_ROUNDS:     1
+          TEST_DATABASE_URL: postgresql://voxelplace:voxelplace@localhost:5432/postgres
 
   test-frontend:
     name: Tests frontend
@@ -60,7 +99,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [test-backend, test-frontend]
+    needs: [lint, test-backend, test-frontend]
     runs-on: ubuntu-latest
 
     steps:

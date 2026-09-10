@@ -40,3 +40,6 @@ docs/dossier/
 docs/rapport.md
 tools/
 DESIGN.md
+
+# Artefacts de build TypeScript / Next.js
+apps/web/tsconfig.tsbuildinfo

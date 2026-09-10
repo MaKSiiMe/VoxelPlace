@@ -7,21 +7,18 @@ import gifenc from 'gifenc'
 const { GIFEncoder, quantize, applyPalette } = gifenc
 import { loadGrid } from '../canvas/grid.js'
 import { PALETTE_RGB } from '../../shared/palette.js'
+import { parseZone, parsePositiveInt } from '../../shared/query.js'
 
-function parseZone(query, gridSize) {
-  const x = Math.max(0, parseInt(query.x ?? '0', 10))
-  const y = Math.max(0, parseInt(query.y ?? '0', 10))
-  const w = Math.min(gridSize - x, Math.max(1, parseInt(query.w ?? '64', 10)))
-  const h = Math.min(gridSize - y, Math.max(1, parseInt(query.h ?? '64', 10)))
-  return { x, y, w, h }
-}
+
 
 export async function zoneRoutes(fastify, { pool, redis, gridSize }) {
 
   // État actuel de la zone
   // GET /api/zone?x=0&y=0&w=64&h=64
   fastify.get('/api/zone', async (req, reply) => {
-    const { x, y, w, h } = parseZone(req.query, gridSize)
+    const zone = parseZone(req.query, gridSize)
+    if (!zone) return reply.status(400).send({ error: 'Paramètres x, y, w, h : entiers attendus' })
+    const { x, y, w, h } = zone
 
     const buf  = await loadGrid(redis)
     const grid = []
@@ -37,8 +34,10 @@ export async function zoneRoutes(fastify, { pool, redis, gridSize }) {
   // Historique complet de la zone
   // GET /api/zone/history?x=0&y=0&w=64&h=64&limit=1000
   fastify.get('/api/zone/history', async (req, reply) => {
-    const { x, y, w, h } = parseZone(req.query, gridSize)
-    const limit = Math.min(parseInt(req.query.limit ?? '1000', 10), 10000)
+    const zone = parseZone(req.query, gridSize)
+    if (!zone) return reply.status(400).send({ error: 'Paramètres x, y, w, h : entiers attendus' })
+    const { x, y, w, h } = zone
+    const limit = parsePositiveInt(req.query.limit, 1000, 10000)
 
     const result = await pool.query(
       `SELECT x, y, color_id AS "colorId", username, source, placed_at AS "placedAt"
@@ -55,9 +54,11 @@ export async function zoneRoutes(fastify, { pool, redis, gridSize }) {
   // Timelapse GIF de la zone
   // GET /api/zone/gif?x=0&y=0&w=64&h=64&fps=10&scale=4
   fastify.get('/api/zone/gif', async (req, reply) => {
-    const { x, y, w, h } = parseZone(req.query, gridSize)
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '4',  10), 1), 16)
+    const zone = parseZone(req.query, gridSize)
+    if (!zone) return reply.status(400).send({ error: 'Paramètres x, y, w, h : entiers attendus' })
+    const { x, y, w, h } = zone
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 4, 16)
 
     const result = await pool.query(
       `SELECT x, y, color_id AS "colorId"

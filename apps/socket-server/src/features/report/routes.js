@@ -4,6 +4,8 @@
 // PATCH /api/admin/reports/:id  → marquer comme traité (admin)
 
 import jwt from 'jsonwebtoken'
+import { requireAdmin } from '../auth/require-admin.js'
+import { parsePositiveInt } from '../../shared/query.js'
 
 // ── Validation pure (testable sans DB) ───────────────────────────────────────
 
@@ -34,15 +36,7 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
     } catch { return null }
   }
 
-  function requireAdmin(req, reply) {
-    const auth = req.headers['authorization']
-    if (!auth?.startsWith('Bearer ')) { reply.status(401).send({ error: 'Token requis' }); return false }
-    try {
-      const p = JSON.parse(Buffer.from(auth.slice(7).split('.')[1], 'base64').toString())
-      if (!p.isAdmin) { reply.status(403).send({ error: 'Accès refusé' }); return false }
-      return true
-    } catch { reply.status(401).send({ error: 'Token invalide' }); return false }
-  }
+  const isAdmin = (req, reply) => requireAdmin(req, reply, { jwtSecret: JWT_SECRET }) !== null
 
   // Soumettre un signalement
   // POST /api/report
@@ -67,11 +61,11 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
   // Liste des signalements (admin)
   // GET /api/admin/reports?status=pending&limit=50
   fastify.get('/api/admin/reports', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return
+    if (!isAdmin(req, reply)) return
 
     const status = ['pending', 'reviewed', 'all'].includes(req.query.status)
       ? req.query.status : 'pending'
-    const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200)
+    const limit = parsePositiveInt(req.query.limit, 50, 200)
 
     const where  = status === 'all' ? '' : 'WHERE status = $2'
     const params = status === 'all' ? [limit] : [limit, status]
@@ -85,9 +79,12 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
   // Marquer un signalement comme traité (admin)
   // PATCH /api/admin/reports/:id
   fastify.patch('/api/admin/reports/:id', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return
+    if (!isAdmin(req, reply)) return
 
-    const id         = parseInt(req.params.id, 10)
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Identifiant de signalement invalide' })
+    }
     const reviewed_by = req.body?.reviewed_by ?? '[admin]'
 
     const { rowCount } = await pool.query(

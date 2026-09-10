@@ -6,13 +6,15 @@ import gifenc from 'gifenc'
 const { GIFEncoder, quantize, applyPalette } = gifenc
 import { PALETTE_RGB } from '../../shared/palette.js'
 
+import { parsePositiveInt } from '../../shared/query.js'
+
 export async function timelapseRoutes(fastify, { pool }) {
 
   // Données du timelapse groupées par intervalles de temps
   // GET /api/timelapse?interval=minute&limit=5000
   // interval : second | minute | hour | day (défaut: minute)
   fastify.get('/api/timelapse', async (req, reply) => {
-    const limit    = Math.min(parseInt(req.query.limit ?? '5000', 10), 50000)
+    const limit    = parsePositiveInt(req.query.limit, 5000, 50000)
     const interval = ['second', 'minute', 'hour', 'day'].includes(req.query.interval)
       ? req.query.interval
       : 'minute'
@@ -40,8 +42,8 @@ export async function timelapseRoutes(fastify, { pool }) {
   // scale : 1-8  (défaut: 1) — taille d'un pixel en px dans le GIF
   // since : 1h | 24h | 7d | 30d | all (défaut: all)
   fastify.get('/api/timelapse/gif', async (req, reply) => {
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '1',  10), 1), 8)
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 1, 8)
     const since = req.query.since
 
     const intervals = { '1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days' }

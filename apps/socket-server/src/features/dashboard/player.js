@@ -7,6 +7,8 @@ import gifenc from 'gifenc'
 const { GIFEncoder, quantize, applyPalette } = gifenc
 import { PALETTE_RGB } from '../../shared/palette.js'
 
+import { parsePositiveInt } from '../../shared/query.js'
+
 export async function playerDashboardRoutes(fastify, { pool, gridSize }) {
 
   // Dashboard complet d'un joueur
@@ -163,8 +165,8 @@ export async function playerDashboardRoutes(fastify, { pool, gridSize }) {
   // GET /api/players/:username/gif?fps=10&scale=1
   fastify.get('/api/players/:username/gif', async (req, reply) => {
     const { username } = req.params
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '1',  10), 1), 8)
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 1, 8)
 
     const result = await pool.query(`
       SELECT x, y, color_id AS "colorId"
