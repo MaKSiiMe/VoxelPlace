@@ -2,12 +2,14 @@
 // GET /api/leaderboard        → top joueurs par pixels posés
 // GET /api/leaderboard/recent → feed des N derniers pixels posés
 
+import { parsePositiveInt } from '../../shared/query.js'
+
 export async function playerRoutes(fastify, { pool }) {
 
   // Top joueurs — classés par nombre de pixels posés
   // GET /api/leaderboard?limit=20
   fastify.get('/api/leaderboard', async (req, reply) => {
-    const limit = Math.min(parseInt(req.query.limit ?? '20', 10), 100)
+    const limit = parsePositiveInt(req.query.limit, 20, 100)
 
     const result = await pool.query(
       `SELECT
@@ -32,7 +34,7 @@ export async function playerRoutes(fastify, { pool }) {
   // Feed des derniers pixels posés
   // GET /api/leaderboard/recent?limit=50
   fastify.get('/api/leaderboard/recent', async (req, reply) => {
-    const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200)
+    const limit = parsePositiveInt(req.query.limit, 50, 200)
 
     const result = await pool.query(
       `SELECT x, y, color_id AS "colorId", username, source,

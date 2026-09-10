@@ -57,8 +57,8 @@ export async function zoneRoutes(fastify, { pool, redis, gridSize }) {
     const zone = parseZone(req.query, gridSize)
     if (!zone) return reply.status(400).send({ error: 'Paramètres x, y, w, h : entiers attendus' })
     const { x, y, w, h } = zone
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '4',  10), 1), 16)
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 4, 16)
 
     const result = await pool.query(
       `SELECT x, y, color_id AS "colorId"

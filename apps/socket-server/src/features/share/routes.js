@@ -8,7 +8,7 @@ import gifenc from 'gifenc'
 const { GIFEncoder, quantize, applyPalette } = gifenc
 import { loadGrid } from '../canvas/grid.js'
 import { PALETTE_RGB } from '../../shared/palette.js'
-import { parseZone } from '../../shared/query.js'
+import { parseZone, parsePositiveInt } from '../../shared/query.js'
 
 // Identifiant public de 8 caractères. Math.random() n'est pas imprévisible :
 // les liens d'un utilisateur pourraient être devinés à partir des siens.
@@ -151,8 +151,8 @@ export async function shareRoutes(fastify, { pool, redis, gridSize }) {
     }
 
     const { x, y, w, h } = zone
-    const fps   = Math.min(Math.max(parseInt(req.query.fps   ?? '10', 10), 1), 30)
-    const scale = Math.min(Math.max(parseInt(req.query.scale ?? '4',  10), 1), 16)
+    const fps   = parsePositiveInt(req.query.fps, 10, 30)
+    const scale = parsePositiveInt(req.query.scale, 4, 16)
 
     const pixels = await pool.query(
       `SELECT x, y, color_id AS "colorId"
