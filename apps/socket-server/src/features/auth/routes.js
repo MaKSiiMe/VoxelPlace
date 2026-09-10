@@ -69,8 +69,16 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         [clean, passwordHash, role]
       )
       const user = result.rows[0]
-      // Non-bloquant — ne doit pas empêcher la connexion si la table n'existe pas encore
-      unlockBaseNodes(pool, user.username).catch(err => console.warn('[auth:register] unlockBaseNodes:', err.message))
+      // Attendu, et non lancé en arrière-plan : ces INSERT continuaient sinon
+      // après la réponse HTTP et pouvaient réinsérer des lignes user_unlocks
+      // *après* une suppression de compte RGPD, laissant des données orphelines.
+      // Le try/catch préserve l'intention d'origine : un échec ici ne doit pas
+      // empêcher l'inscription d'aboutir.
+      try {
+        await unlockBaseNodes(pool, user.username)
+      } catch (err) {
+        console.warn('[auth:register] unlockBaseNodes:', err.message)
+      }
       const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)
       reply.status(201).send({ token, username: user.username, role: user.role })
     } catch (err) {
@@ -160,13 +168,26 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         return reply.status(401).send({ error: 'Mot de passe incorrect' })
       }
 
-      // Suppression en cascade de toutes les données personnelles
-      await pool.query('DELETE FROM user_unlocks    WHERE LOWER(username) = LOWER($1)', [user.username])
-      await pool.query('DELETE FROM user_stats      WHERE LOWER(username) = LOWER($1)', [user.username])
-      await pool.query('DELETE FROM user_color_counts WHERE LOWER(username) = LOWER($1)', [user.username])
-      await pool.query('DELETE FROM pixel_messages  WHERE LOWER(username) = LOWER($1)', [user.username])
-      await pool.query('DELETE FROM reports         WHERE LOWER(reporter)  = LOWER($1)', [user.username])
-      await pool.query('DELETE FROM users           WHERE id = $1', [payload.id])
+      // Suppression en cascade, dans une transaction : le droit à l'effacement
+      // doit être tout ou rien. En six requêtes indépendantes, une panne en
+      // cours de route laissait un compte à demi supprimé, donc des données
+      // personnelles subsistantes.
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        await client.query('DELETE FROM user_unlocks      WHERE LOWER(username) = LOWER($1)', [user.username])
+        await client.query('DELETE FROM user_stats        WHERE LOWER(username) = LOWER($1)', [user.username])
+        await client.query('DELETE FROM user_color_counts WHERE LOWER(username) = LOWER($1)', [user.username])
+        await client.query('DELETE FROM pixel_messages    WHERE LOWER(username) = LOWER($1)', [user.username])
+        await client.query('DELETE FROM reports           WHERE LOWER(reporter) = LOWER($1)', [user.username])
+        await client.query('DELETE FROM users             WHERE id = $1', [payload.id])
+        await client.query('COMMIT')
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      } finally {
+        client.release()
+      }
 
       // Note : pixel_history est conservé (données anonymisées — intérêt légitime gameplay)
       // Les pixels posés restent sur le canvas mais sans lien au compte supprimé.
