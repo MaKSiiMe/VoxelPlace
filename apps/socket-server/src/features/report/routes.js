@@ -4,10 +4,16 @@
 // PATCH /api/admin/reports/:id  → marquer comme traité (admin)
 
 import jwt from 'jsonwebtoken'
+import { isValidCoord, sanitizeUsername } from '../canvas/utils.js'
+import { sanitizeMessage } from '../chat/message.js'
+import { checkRateLimit } from '../auth/rate-limit.js'
 import { requireAdmin } from '../auth/require-admin.js'
 import { parsePositiveInt } from '../../shared/query.js'
 
 // ── Validation pure (testable sans DB) ───────────────────────────────────────
+
+const MAX_REASON_LENGTH = 256   // taille de la colonne reports.reason
+const REPORTS_PER_MINUTE = 5
 
 /**
  * Valide le corps d'un signalement.
@@ -15,14 +21,25 @@ import { parsePositiveInt } from '../../shared/query.js'
  */
 export function validateReport({ target_type, target_username, x, y, reason } = {}) {
   if (!['pixel', 'player'].includes(target_type)) return null
-  if (target_type === 'pixel' && (typeof x !== 'number' || typeof y !== 'number')) return null
-  if (target_type === 'player' && !target_username) return null
+
+  // Les valeurs doivent tenir dans les colonnes : des coordonnées hors grille
+  // ou décimales, un pseudo ou un motif trop long produisaient une erreur SQL,
+  // renvoyée en 500.
+  if (target_type === 'pixel' && (!isValidCoord(x) || !isValidCoord(y))) return null
+
+  let username = null
+  if (target_username !== undefined && target_username !== null) {
+    if (typeof target_username !== 'string') return null
+    username = sanitizeUsername(target_username) || null
+  }
+  if (target_type === 'player' && !username) return null
+
   return {
     target_type,
-    target_username: target_username ?? null,
-    x: x ?? null,
-    y: y ?? null,
-    reason: reason ?? null,
+    target_username: username,
+    x: target_type === 'pixel' ? x : null,
+    y: target_type === 'pixel' ? y : null,
+    reason: sanitizeMessage(reason, MAX_REASON_LENGTH),
   }
 }
 
@@ -42,6 +59,13 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
   // POST /api/report
   // Body : { target_type, target_username?, x?, y?, reason? }
   fastify.post('/api/report', async (req, reply) => {
+    // Le signalement est ouvert aux visiteurs, et chaque requête écrit en base :
+    // sans limite, un script remplissait la file de modération à volonté.
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown'
+    if (!checkRateLimit(`report:${ip}`, REPORTS_PER_MINUTE)) {
+      return reply.status(429).send({ error: 'Trop de signalements, réessaie dans une minute' })
+    }
+
     const reporter = getUsername(req)  // null = anonyme OK
     const report = validateReport(req.body || {})
 

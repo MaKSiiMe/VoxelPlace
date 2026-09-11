@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken'
 import { startTestDatabase, truncateAll } from './helpers/postgres.js'
 import { buildTestApp, BROWSER_HEADERS, TEST_JWT_SECRET } from './helpers/app.js'
 import { reportRoutes, validateReport } from '../src/features/report/routes.js'
+import { _resetAttempts } from '../src/features/auth/rate-limit.js'
 
 let db, app
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
@@ -39,6 +40,7 @@ after(async () => {
 beforeEach(async () => {
   if (db.skipped) return
   await truncateAll(db.pool)
+  _resetAttempts()
 })
 
 describe('validateReport', () => {
@@ -82,6 +84,27 @@ describe('POST /api/report', { skip: skip() }, () => {
 
   it('refuse un signalement invalide', async () => {
     assert.equal((await report({ target_type: 'autre' })).statusCode, 400)
+  })
+
+  it('refuse des coordonnées hors grille au lieu d\'échouer en 500', async () => {
+    assert.equal((await report({ target_type: 'pixel', x: 99999, y: 1 })).statusCode, 400)
+    assert.equal((await report({ target_type: 'pixel', x: 1.5,   y: 1 })).statusCode, 400)
+  })
+
+  it('tronque un motif plus long que la colonne au lieu d\'échouer en 500', async () => {
+    const res = await report({ target_type: 'pixel', x: 1, y: 1, reason: 'x'.repeat(300) })
+    assert.equal(res.statusCode, 201)
+    const { rows } = await db.pool.query('SELECT length(reason)::int AS n FROM reports')
+    assert.equal(rows[0].n, 256)
+  })
+
+  it('limite le nombre de signalements par minute', async () => {
+    const codes = []
+    for (let i = 0; i < 8; i++) codes.push((await report({ target_type: 'pixel', x: 1, y: 1 })).statusCode)
+    assert.deepEqual(codes.slice(0, 5), [201, 201, 201, 201, 201])
+    assert.equal(codes[5], 429, 'la file de modération ne doit pas pouvoir être inondée')
+    const { rows } = await db.pool.query('SELECT count(*)::int AS n FROM reports')
+    assert.equal(rows[0].n, 5)
   })
 })
 
