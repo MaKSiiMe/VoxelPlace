@@ -18,6 +18,7 @@
     "@types/react-dom": "^19.0.0",
     "@voxelplace/styles": "*",
     "@voxelplace/types": "*",
+    "geist": "^1.7.2",
     "next": "^16.2.1",
     "pixi.js": "latest",
     "react": "latest",

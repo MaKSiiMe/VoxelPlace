@@ -1,6 +1,43 @@
 @import "tailwindcss";
 
+/* Sources explicites : ce fichier vit hors de l'application, la détection
+   automatique de Tailwind ne doit pas dépendre du répertoire courant du build. */
+@source "../../../apps/web/app";
+@source "../../../apps/web/features";
+@source "../../../apps/web/shared";
+
+/* ══ Design system ═══════════════════════════════════════════════════════════
+   Teintes Tokyo Night conservées, surfaces et textes recalibrés : chaque
+   couple texte / surface ci-dessous atteint au moins 4,5:1 (WCAG 1.4.3).
+   Voir apps/web/tests/design-tokens.test.ts, qui le vérifie.
+   ════════════════════════════════════════════════════════════════════════ */
 @theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --color-bg:          #13141c;   /* fond hors canvas */
+  --color-surface:     #1c1e2b;   /* panneaux flottants */
+  --color-surface-2:   #262a3b;   /* éléments surélevés, survol */
+  --color-line:        #2f3346;   /* séparateurs et contours décoratifs */
+  --color-line-strong: #454b66;
+
+  --color-fg:          #e4e8f7;   /* texte principal       — 13,5:1 sur surface */
+  --color-fg-muted:    #a9b1d6;   /* texte secondaire      —  7,8:1 */
+  --color-fg-subtle:   #8f97bd;   /* libellés discrets     —  5,8:1 */
+
+  --color-accent:      #7aa2f7;
+  --color-success:     #9ece6a;
+  --color-danger:      #f7768e;
+  --color-warning:     #e0af68;
+  --color-on-accent:   #13141c;   /* texte posé sur une couleur d'accent */
+
+  --radius-control: 8px;
+  --radius-panel:   14px;
+
+  --shadow-float: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.06);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* ── Tokyo Night — UI ─────────────────────────── */
   --color-bg:         #1a1b26;
   --color-surface:    #24283b;
@@ -32,11 +69,25 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;   /* dvh : exclut les barres du navigateur mobile */
   overflow: hidden;
-  background-color: #1a1b26;
-  color: #c0caf5;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Focus clavier visible partout, jamais au clic souris */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 canvas {

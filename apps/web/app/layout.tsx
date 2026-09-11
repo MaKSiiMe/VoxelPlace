@@ -1,4 +1,6 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
+import { GeistSans } from 'geist/font/sans'
+import { GeistMono } from 'geist/font/mono'
 import '@voxelplace/styles/globals.css'
 import { CookieBanner } from '@features/rgpd/CookieBanner'
 
@@ -29,9 +31,19 @@ export const metadata: Metadata = {
   alternates: { canonical: BASE_URL },
 }
 
+// Le zoom du navigateur reste autorisé : l'interdire empêcherait d'agrandir
+// le texte (WCAG 1.4.4). C'est le canvas seul qui capte les gestes, via
+// « touch-action: none » sur son conteneur.
+export const viewport: Viewport = {
+  width:        'device-width',
+  initialScale: 1,
+  viewportFit:  'cover',
+  themeColor:   '#13141c',
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang="fr" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {children}
         <CookieBanner />
