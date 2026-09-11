@@ -70,7 +70,16 @@ try {
   process.exit(1)
 }
 // --- Routes REST (features) ---
-await authRoutes(fastify, { pool, jwtSecret: JWT_SECRET })
+await authRoutes(fastify, {
+  pool, redis, jwtSecret: JWT_SECRET,
+  // Appelé après une suppression de compte. io et cooldown sont initialisés
+  // plus bas, mais ce rappel ne s'exécute qu'au traitement d'une requête.
+  onAccountDeleted: (username) => {
+    cooldown.invalidate(username)
+    const socketId = usernameToSocket.get(username.toLowerCase())
+    if (socketId) io.sockets.sockets.get(socketId)?.disconnect(true)
+  },
+})
 await playerRoutes(fastify, { pool })
 await timelapseRoutes(fastify, { pool })
 await zoneRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
