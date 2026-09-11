@@ -308,6 +308,8 @@ Les couleurs sont débloquées progressivement via le **skill tree**.
 | Spam auth | Rate limiting 10 req/min par IP (`/register` et `/login`) |
 | CORS | `ALLOWED_ORIGINS` — origines explicitement autorisées (env var) |
 | Spam pixels | Cooldown serveur par username + vérification JWT |
+| Usurpation du pont Minecraft | Secret partagé `BRIDGE_TOKEN` vérifié au handshake Socket.io — la source `minecraft` déclarée dans un message ne confère aucun privilège |
+| Usurpation d'identité | Le pseudo enregistré à la connexion est celui du JWT, jamais celui annoncé par le client |
 | Coords invalides | `Number.isInteger()` + bornes 0–2047 strictes |
 | Mots de passe | bcrypt 10 rounds — min 6 caractères |
 | Sessions | JWT signé `JWT_SECRET`, expiration 7 jours |
@@ -432,6 +434,7 @@ DATABASE_URL=postgresql://voxelplace:changeme@localhost:5432/voxelplace
 ADMIN_PASSWORD=changeme
 JWT_SECRET=une_cle_generee_avec_openssl_rand_hex_32
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+BRIDGE_TOKEN=secret_partage_avec_le_plugin   # openssl rand -hex 32
 ```
 
 ### Développement
@@ -526,7 +529,9 @@ Connecte un serveur **Paper 1.21.11* au backend via Socket.io WebSocket.
 - Clic droit avec un bloc coloré (béton **ou laine**) → `pixel:place` + mise à jour optimiste locale
 - `pixel:update` reçus → blocs mis à jour en temps réel
 - Rollback automatique si le serveur refuse (ban, coords invalides)
-- **Pas de cooldown** : les pixels placés depuis Minecraft bypass le rate limiting côté serveur
+- **Authentification** : le plugin présente un secret partagé au handshake (`bridge-token` dans son
+  `config.yml`, `BRIDGE_TOKEN` côté serveur). Sans lui, le serveur refuse les pixels posés depuis Minecraft
+- **Pas de cooldown** : une fois authentifié, le pont n'est pas soumis au rate limiting du web
 - **Action bar** : coordonnées grille + couleur du pixel sous les pieds affichées en marchant sur le canvas
 - **Tutoriel** : `TutorialManager` guide les nouveaux joueurs à la première connexion
 - Exposé via **Playit.gg** (tunnel sans IP publique)

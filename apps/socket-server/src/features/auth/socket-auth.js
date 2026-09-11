@@ -1,29 +1,45 @@
 // ── Authentification Socket.io ───────────────────────────────────────────────
-// Middleware de handshake : vérifie le JWT s'il est présent et attache le
-// username vérifié à socket.data. Les visiteurs sans token sont acceptés —
-// ils ont accès à la grille en lecture seule (pixel:place les refusera).
+// Middleware de handshake. Deux identités possibles :
+//
+//   · un joueur web, prouvé par son JWT        → socket.data.verifiedUsername
+//   · un pont de jeu (plugin Minecraft), prouvé
+//     par un secret partagé                    → socket.data.isBridge
+//
+// Les visiteurs sans preuve sont acceptés en lecture seule.
+//
+// Le pont était auparavant reconnu sur la seule déclaration du client
+// (`source: 'minecraft'` dans le message). N'importe quel navigateur pouvait
+// donc poser des pixels sans compte, sans cooldown et sous un pseudo arbitraire.
+// L'identité de pont se prouve désormais au handshake, jamais dans un message.
 
 import { verifyToken } from './routes.js'
+import { constantTimeEqual } from '../../shared/crypto.js'
 import { logger } from '../../shared/logger.js'
 
 /**
- * Construit le middleware de handshake Socket.io.
- *
- * Toute erreur est absorbée : Socket.io n'entoure pas l'exécution des
- * middlewares d'un try/catch, donc une exception qui s'échappe d'ici tue le
- * process entier. Un token illisible doit dégrader la connexion en lecture
- * seule, jamais faire tomber le serveur.
+ * @param {object} options
+ * @param {string} options.jwtSecret    secret de signature des JWT joueurs
+ * @param {string} [options.bridgeToken] secret partagé avec les ponts de jeu ;
+ *                                       absent, aucun socket ne peut s'en réclamer
  */
-export function createSocketAuth(jwtSecret) {
+export function createSocketAuth({ jwtSecret, bridgeToken }) {
   return function socketAuth(socket, next) {
+    // Toute erreur est absorbée : Socket.io n'entoure pas l'exécution des
+    // middlewares d'un try/catch, et une exception qui s'échappe d'ici tue le
+    // process. Une preuve illisible dégrade la connexion en lecture seule.
     try {
-      const token = socket.handshake.auth?.token
-      if (token) {
-        const payload = verifyToken(token, jwtSecret)
+      const auth = socket.handshake.auth ?? {}
+
+      if (auth.token) {
+        const payload = verifyToken(auth.token, jwtSecret)
         if (payload) {
           socket.data.verifiedUsername = payload.username
           socket.data.verifiedRole     = payload.role
         }
+      }
+
+      if (auth.bridgeToken && bridgeToken && constantTimeEqual(auth.bridgeToken, bridgeToken)) {
+        socket.data.isBridge = true
       }
     } catch (err) {
       logger.error({ err: err.message }, 'socket:auth')

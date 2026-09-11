@@ -151,9 +151,44 @@ describe('placePixel — identité', { skip: skip() }, () => {
     assert.equal(meta.username, 'Alice')
   })
 
-  it('laisse passer Minecraft sans JWT — le pont n\'a pas de session web', async () => {
-    const res = await placePixel(deps, webPixel({ source: 'minecraft', username: 'Steve' }), {})
+  it('refuse un client qui se déclare Minecraft sans avoir prouvé qu\'il est le pont', async () => {
+    // Ce test affirmait l'inverse : « laisse passer Minecraft sans JWT ». Il
+    // entérinait une faille — n'importe quel navigateur pouvait poser sans
+    // compte, sans cooldown et sous un pseudo arbitraire en envoyant
+    // source: 'minecraft'.
+    const res = await placePixel(deps, webPixel({ source: 'minecraft', username: 'Bot' }), {})
+    assert.equal(res.ok, false)
+    assert.match(res.error, /Pont de jeu non authentifié/)
+  })
+
+  it('refuse aussi la fausse source à un joueur web authentifié', async () => {
+    // Un compte légitime ne doit pas pouvoir échapper à son cooldown en se
+    // faisant passer pour le pont.
+    await createUser('Alice')
+    const res = await placePixel(deps, webPixel({ source: 'minecraft' }), asAlice)
+    assert.equal(res.ok, false)
+  })
+
+  it('accepte le pont authentifié au handshake, sans JWT joueur', async () => {
+    const res = await placePixel(deps, webPixel({ source: 'minecraft', username: 'Steve' }), { isBridge: true })
     assert.equal(res.ok, true)
+    assert.equal(res.pixel.source, 'minecraft')
+  })
+
+  it('refuse au pont une source qui n\'est pas celle d\'un jeu', async () => {
+    const res = await placePixel(deps, webPixel({ source: 'web', username: 'Steve' }), { isBridge: true })
+    assert.equal(res.ok, false)
+  })
+
+  it('ramène à « web » toute source libre envoyée par un joueur web', async () => {
+    // La source alimente les compteurs par plateforme : une valeur libre y
+    // créerait un champ arbitraire à chaque variante envoyée.
+    await createUser('Alice')
+    const res = await placePixel(deps, webPixel({ source: 'mon_bot_perso' }), asAlice)
+    assert.equal(res.ok, true)
+    assert.equal(res.pixel.source, 'web')
+    const stats = await getStats(redis)
+    assert.equal(stats.byPlatform.mon_bot_perso, undefined)
   })
 })
 
@@ -175,9 +210,9 @@ describe('placePixel — cooldown', { skip: skip() }, () => {
     assert.equal((await placePixel(deps, webPixel({ x: 11 }), asAlice)).ok, true)
   })
 
-  it('n\'applique aucun cooldown à Minecraft', async () => {
+  it('n\'applique aucun cooldown au pont authentifié', async () => {
     for (let i = 0; i < 3; i++) {
-      const res = await placePixel(deps, webPixel({ x: i, source: 'minecraft', username: 'Steve' }), {})
+      const res = await placePixel(deps, webPixel({ x: i, source: 'minecraft', username: 'Steve' }), { isBridge: true })
       assert.equal(res.ok, true, `pose ${i} refusée`)
     }
   })

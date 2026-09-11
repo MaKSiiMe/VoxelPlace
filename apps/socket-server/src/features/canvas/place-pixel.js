@@ -9,22 +9,35 @@
 import { setPixel, getPixelMeta } from './grid.js'
 import { validatePixel } from './utils.js'
 import { incrementStats } from '../analytics/stats.js'
+import { BRIDGE_SOURCES } from '../auth/player-identity.js'
 import { logger } from '../../shared/logger.js'
 
-/** Plateformes qui n'ont pas de session web et sont donc exemptées de JWT. */
-const TRUSTED_BRIDGE_SOURCES = new Set(['minecraft'])
 
 /**
  * @returns {Promise<{ok: true, pixel, prevMeta, cooldownMs} | {ok: false, error, cooldown?}>}
  */
-export async function placePixel({ redis, pool, cooldown }, data, { verifiedUsername } = {}) {
+export async function placePixel({ redis, pool, cooldown }, data, { verifiedUsername, isBridge = false } = {}) {
   const pixel = validatePixel(data)
   if (!pixel) return { ok: false, error: 'Données invalides' }
 
-  const isBridge = TRUSTED_BRIDGE_SOURCES.has(pixel.source)
+  // Le statut de pont se prouve au handshake (voir socket-auth.js), jamais
+  // dans le message. Se déclarer « minecraft » ne suffit plus : c'est ce qui
+  // permettait de poser sans compte, sans cooldown et sous n'importe quel nom.
+  const claimsBridge = BRIDGE_SOURCES.has(pixel.source)
+  if (claimsBridge && !isBridge) {
+    return { ok: false, error: 'Pont de jeu non authentifié' }
+  }
+  if (isBridge && !claimsBridge) {
+    return { ok: false, error: 'Source invalide pour un pont de jeu' }
+  }
 
   // Un client web doit prouver son identité, et ne peut poser qu'en son nom.
   if (!isBridge) {
+    // Toute source non-pont est ramenée à « web » : la valeur alimente les
+    // compteurs par plateforme, et une source libre y créerait des champs
+    // arbitraires.
+    pixel.source = 'web'
+
     if (!verifiedUsername) {
       return { ok: false, error: 'Connexion requise pour placer des pixels' }
     }

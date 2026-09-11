@@ -4,9 +4,10 @@ import cors from '@fastify/cors'
 import { Server } from 'socket.io'
 import Redis from 'ioredis'
 import { loadGrid, setPixel, clearGrid, GRID_SIZE } from './features/canvas/grid.js'
-import { isValidCoord, sanitizeUsername } from './features/canvas/utils.js'
+import { isValidCoord } from './features/canvas/utils.js'
 import { authRoutes } from './features/auth/routes.js'
 import { createSocketAuth } from './features/auth/socket-auth.js'
+import { resolvePlayerIdentity } from './features/auth/player-identity.js'
 import { playerRoutes } from './features/players/routes.js'
 import { timelapseRoutes } from './features/timelapse/routes.js'
 import { zoneRoutes } from './features/zone/routes.js'
@@ -35,6 +36,9 @@ import { profileRoutes } from './features/profile/routes.js'
 const PORT            = parseInt(process.env.PORT || '3001', 10)
 const REDIS_URL       = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
 const JWT_SECRET      = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
+// Secret partagé avec les ponts de jeu. Absent, aucun socket ne peut se
+// présenter comme pont : les poses venues de Minecraft sont refusées.
+const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN || ''
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://localhost:3000']
@@ -83,7 +87,7 @@ const io = new Server(fastify.server, {
 })
 
 // Vérifie le JWT du handshake — les viewers sans token restent acceptés en lecture seule
-io.use(createSocketAuth(JWT_SECRET))
+io.use(createSocketAuth({ jwtSecret: JWT_SECRET, bridgeToken: BRIDGE_TOKEN }))
 
 // --- Joueurs connectés ---
 // socketId → { username, source }
@@ -135,14 +139,12 @@ io.on('connection', async (socket) => {
   }
 
   // Le client annonce son pseudo et sa plateforme
-  socket.on('player:join', ({ username, source } = {}) => {
-    if (typeof username !== 'string' || !username.trim()) return
-    const cleanSource = ['web', 'minecraft', 'roblox', 'hytale'].includes(source)
-      ? source
-      : 'web'
-    const cleanUsername = sanitizeUsername(username)
-    connectedPlayers.set(socket.id, { username: cleanUsername, source: cleanSource })
-    usernameToSocket.set(cleanUsername.toLowerCase(), socket.id)
+  // L'identité enregistrée est celle prouvée au handshake, pas celle annoncée
+  socket.on('player:join', (declared = {}) => {
+    const identity = resolvePlayerIdentity(declared, socket.data)
+    if (!identity) return
+    connectedPlayers.set(socket.id, identity)
+    usernameToSocket.set(identity.username.toLowerCase(), socket.id)
     broadcastPlayers()
   })
 
@@ -219,7 +221,7 @@ io.on('connection', async (socket) => {
       const result = await placePixel(
         { redis, pool, cooldown },
         data,
-        { verifiedUsername: socket.data.verifiedUsername },
+        { verifiedUsername: socket.data.verifiedUsername, isBridge: socket.data.isBridge === true },
       )
 
       if (!result.ok) {
@@ -307,6 +309,9 @@ try {
   await initUnlockTables(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
   logger.info(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
+  if (!BRIDGE_TOKEN) {
+    logger.warn('BRIDGE_TOKEN absent : les ponts de jeu ne peuvent pas s\'authentifier, les poses venues de Minecraft seront refusées')
+  }
   if (TEST_USERNAMES.size > 0) {
     logger.info(`[Rate limit] Comptes exemptés : ${[...TEST_USERNAMES].join(', ')}`)
   }

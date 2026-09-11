@@ -7,6 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URI;
+import java.util.Map;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -30,11 +31,24 @@ public class SocketManager {
 
     public void connect() {
         serverUrl = plugin.getConfig().getString("server-url", "http://localhost:3001");
+
+        // Secret partagé avec le serveur, présenté au handshake. Sans lui, le
+        // serveur ne reconnaît pas ce plugin comme pont de jeu et refuse les
+        // pixels posés depuis Minecraft : c'est ce qui empêche un simple
+        // navigateur de se faire passer pour le plugin.
+        String bridgeToken = plugin.getConfig().getString("bridge-token", "");
+        if (bridgeToken == null || bridgeToken.isBlank()) {
+            plugin.getLogger().warning("[Socket] bridge-token absent de config.yml : "
+                + "le serveur refusera les pixels posés depuis Minecraft.");
+            bridgeToken = "";
+        }
+
         try {
             IO.Options opts = IO.Options.builder()
                 .setReconnection(true)
                 .setReconnectionDelay(3000)
                 .setReconnectionAttempts(Integer.MAX_VALUE)
+                .setAuth(Map.of("bridgeToken", bridgeToken))
                 .build();
 
             socket = IO.socket(URI.create(serverUrl), opts);
