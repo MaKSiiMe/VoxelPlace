@@ -46,7 +46,7 @@ const TEST_USERNAMES = new Set(
 
 // --- Redis ---
 const redis = new Redis(REDIS_URL)
-redis.on('connect', () => logger.info(`[Redis] Connecté à ${REDIS_URL}`))
+redis.on('connect', () => logger.info('Redis connecté'))
 redis.on('error',   (err) => logger.error({ err: err.message }, 'Redis injoignable'))
 
 // --- Fastify ---
