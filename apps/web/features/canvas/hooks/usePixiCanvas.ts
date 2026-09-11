@@ -8,7 +8,7 @@ import {
   Sprite,
   type FederatedPointerEvent,
 } from 'pixi.js'
-import { useCanvasStore, DEFAULT_COLORS } from '../store'
+import { useCanvasStore, DEFAULT_COLORS, drainDirtyPixels } from '../store'
 import { viewportState, registerNavigate, unregisterNavigate } from '../viewportState'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
@@ -25,8 +25,8 @@ const PALETTE_RGBA: Uint8Array = (() => {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function gridToRGBA(grid: Uint8Array, size: number): Uint8Array {
-  const rgba = new Uint8Array(size * size * 4)
+/** Réécrit tout le buffer RGBA depuis la grille. Réservé aux chargements complets. */
+function fillRGBA(rgba: Uint8Array, grid: Uint8Array, size: number): void {
   for (let i = 0; i < size * size; i++) {
     const id = (grid[i] ?? 0) & 0x0F
     rgba[i * 4]     = PALETTE_RGBA[id * 4]
@@ -34,7 +34,16 @@ function gridToRGBA(grid: Uint8Array, size: number): Uint8Array {
     rgba[i * 4 + 2] = PALETTE_RGBA[id * 4 + 2]
     rgba[i * 4 + 3] = 255
   }
-  return rgba
+}
+
+/** Réécrit les 4 octets d'un seul pixel. */
+function writePixelRGBA(rgba: Uint8Array, index: number, colorId: number): void {
+  const id = colorId & 0x0F
+  const o  = index * 4
+  rgba[o]     = PALETTE_RGBA[id * 4]
+  rgba[o + 1] = PALETTE_RGBA[id * 4 + 1]
+  rgba[o + 2] = PALETTE_RGBA[id * 4 + 2]
+  rgba[o + 3] = 255
 }
 
 const DEFAULT_SCALE  = 4
@@ -64,12 +73,14 @@ export function usePixiCanvas(
 
     let app:          Application
     let bufferSource: BufferImageSource
+    let rgbaBuffer:   Uint8Array
     let gridSprite:   Sprite
     let isPanning     = false
     let panStart      = { x: 0, y: 0 }
     let spriteStart   = { x: 0, y: 0 }
     let isSpaceDown   = false
-    let unsubGrid:    () => void
+    let unsubGrid:     () => void
+    let unsubFullGrid: () => void
     let resizeObs:    ResizeObserver
 
     async function init() {
@@ -93,10 +104,12 @@ export function usePixiCanvas(
 
       // ── Texture ──
       const initSize = useCanvasStore.getState().gridSize
-      const initRGBA = new Uint8Array(initSize * initSize * 4).fill(255)
+      // Alloué une fois pour toute la durée de vie du canvas : on y écrit
+      // ensuite pixel par pixel, au lieu de reconstruire 16 Mo à chaque pose.
+      rgbaBuffer = new Uint8Array(initSize * initSize * 4).fill(255)
 
       bufferSource = new BufferImageSource({
-        resource:   initRGBA,
+        resource:   rgbaBuffer,
         width:      initSize,
         height:     initSize,
         format:     'rgba8unorm',
@@ -120,6 +133,7 @@ export function usePixiCanvas(
 
       // ── Grid overlay — manipulé directement en DOM via data-attribute ──
       app.ticker.add(() => {
+        flushGridChanges()
         const scale = gridSprite.scale.x
         useCanvasStore.getState().setPixelSize(scale)
         // Mise à jour du viewport pour la minimap (sans re-render React)
@@ -137,20 +151,49 @@ export function usePixiCanvas(
         el.style.backgroundPosition = `${gridSprite.x}px ${gridSprite.y}px`
       })
 
-      // ── Subscribe to grid changes ──
+      // ── Suivi des changements de grille ──
+      // La grille est mutée en place : on observe le compteur de version, et
+      // on note simplement qu'il y a du travail. L'application a lieu dans le
+      // ticker, au plus une fois par frame, quel que soit le nombre de pixels
+      // reçus entre deux images.
+      let needsFullRedraw = false
+      let hasPendingWork  = false
+
       unsubGrid = useCanvasStore.subscribe(
-        (s) => s.grid,
-        (grid) => {
-          if (!grid || !bufferSource) return
-          const size = useCanvasStore.getState().gridSize
-          bufferSource.resource = gridToRGBA(grid, size)
-          bufferSource.update()
-        },
+        (s) => s.gridVersion,
+        () => { hasPendingWork = true },
       )
+
+      // Un remplacement complet de la grille (grid:init) vide la file : les
+      // indices en attente ne désignent plus rien de valide.
+      unsubFullGrid = useCanvasStore.subscribe(
+        (s) => s.grid,
+        () => { needsFullRedraw = true; hasPendingWork = true },
+      )
+
+      function flushGridChanges() {
+        if (!hasPendingWork || !bufferSource) return
+        hasPendingWork = false
+
+        const grid = useCanvasStore.getState().grid
+        if (!grid) return
+        const size = useCanvasStore.getState().gridSize
+
+        if (needsFullRedraw) {
+          needsFullRedraw = false
+          drainDirtyPixels()
+          fillRGBA(rgbaBuffer, grid, size)
+        } else {
+          const dirty = drainDirtyPixels()
+          if (dirty.length === 0) return
+          for (const index of dirty) writePixelRGBA(rgbaBuffer, index, grid[index] ?? 0)
+        }
+        bufferSource.update()
+      }
 
       const currentGrid = useCanvasStore.getState().grid
       if (currentGrid) {
-        bufferSource.resource = gridToRGBA(currentGrid, initSize)
+        fillRGBA(rgbaBuffer, currentGrid, initSize)
         bufferSource.update()
       }
 
@@ -274,6 +317,7 @@ export function usePixiCanvas(
         window.removeEventListener('keyup',   onKeyUp)
         resizeObs?.disconnect()
         unsubGrid?.()
+        unsubFullGrid?.()
         unregisterNavigate()
       }
 

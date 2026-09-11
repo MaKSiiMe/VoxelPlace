@@ -8,8 +8,8 @@
     "test": "BCRYPT_ROUNDS=1 node --test tests/*.test.js"
   },
   "dependencies": {
-    "@voxelplace/types": "*",
     "@fastify/cors": "^11.2.0",
+    "@voxelplace/types": "*",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.3.1",
     "fastify": "^5.8.4",
@@ -17,6 +17,7 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.3",
+    "pino": "^10.3.1",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {

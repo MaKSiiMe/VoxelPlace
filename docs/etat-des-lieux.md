@@ -157,7 +157,7 @@ nativement via JSON Schema, ce qui supprimerait ces vérifications manuelles.
 |-------|--------|
 | **Code mort** | `packages/db/` (Drizzle : schéma, migrations, config) n'est importé nulle part — le backend utilise `pg` brut. Deux définitions concurrentes du schéma coexistent. |
 | **Code mort** | `voxelplace-minecraft/` à la racine est un dossier vide (reliquat de build). `CLAUDE.md` y pointait encore. |
-| **Poids inutile** | `tools/preview-creeper.html` et `tools/preview-pixels.html` : 229 Ko chacun, versionnés. |
+| **Poids inutile** | ~~`tools/preview-*.html` versionnés~~ — erreur de cet audit : `tools/` est dans `.gitignore` et n'a jamais été dans le dépôt. |
 | **Duplication** | `SUPERUSER_PREFIXES` est réécrit en dur deux fois dans `auth/routes.js` (l. 63 et 110) alors que `@voxelplace/types/roles` l'exporte. |
 | **Duplication** | La palette existe en trois exemplaires (voir `CLAUDE.md`, invariant 1). |
 | **`index.js` fourre-tout** | 533 lignes : rate limiting, stats, heatmap, snapshot, conflits, historique + tous les handlers socket. Les features sont extraites, mais pas ce fichier. |
@@ -190,14 +190,14 @@ nativement via JSON Schema, ce qui supprimerait ces vérifications manuelles.
 |---|-------|-----------|
 | 1 | `verifyToken` non importé | Middleware extrait dans `features/auth/socket-auth.js`, erreurs absorbées, couvert par un test d'intégration Socket.io réel |
 | 2 | `admin:clearAll` en 4,2 M d'écritures | `clearGrid()` : un `SET`, un `DEL`, un seul `canvas:reload`. Le plugin Minecraft sait désormais y réagir |
-| 3 | Grille transportée en JSON | **Non traité** — voir ci-dessous |
-| 4 | Rendu front : 20 Mo par pixel | **Non traité** — voir ci-dessous |
+| 3 | Grille transportée en JSON | Buffer envoyé tel quel, transporté en binaire : 8,2 Mo → 4,0 Mo par connexion |
+| 4 | Rendu front : 20 Mo par pixel | Mutation en place + file de pixels modifiés + un upload par frame. Mesuré sur 200 pixels : 2358 ms / 4 Go → 0,1 ms / 16 Mo |
 | 5 | Cooldown en mémoire | Extrait dans `features/canvas/cooldown.js`, horloge injectable, 15 tests. Reste en mémoire : documenté comme limite au déploiement mono-instance |
 | 6 | Aucun test d'intégration | 245 tests backend contre un vrai PostgreSQL 16 |
 | 7 | `/api/admin/login` non limité | Rate limit 5/min + comparaison à temps constant, sur la route REST **et** l'événement socket |
 | 8 | Bases publiées sur toutes les interfaces | PostgreSQL sur la loopback, Redis interne, versions épinglées |
 | 9 | Dépendance Redis non déclarée | Ajoutée à `depends_on` |
-| 10 | Pas de journalisation structurée | **Non traité** |
+| 10 | Pas de journalisation structurée | Pino partagé par Fastify et le reste du serveur, requêtes tracées, secrets masqués |
 | 11 | Aucune validation des paramètres | `shared/query.js`, adopté par toutes les routes |
 
 ### Ce que la mise sous tests a révélé
@@ -230,13 +230,10 @@ Ces défauts n'étaient pas dans l'audit initial : ils sont apparus en écrivant
 
 Par ordre de valeur :
 
-1. **Performance du canvas** (points 3 et 4) — la grille transite en JSON (~10 Mo par
-   connexion) et le client réalloue 20 Mo à chaque pixel reçu. Ce sont les deux vrais
-   plafonds ; ils demandent un protocole binaire et un rendu incrémental.
-2. **Journalisation structurée** (point 10) — Fastify embarque Pino, aucune requête n'est tracée.
-3. **Couverture restante** — le chat, le timelapse et les dashboards joueur n'ont pas de tests ;
+1. **Couverture restante** — le chat, le timelapse et les dashboards joueur n'ont pas de tests ;
    le frontend n'est couvert que sur ses stores et utilitaires, pas ses composants ; le plugin
    Java n'a aucun test.
-4. **Code mort** — `packages/db/` (Drizzle) et les deux fichiers de prévisualisation de 229 Ko
-   dans `tools/`.
-5. **`GameFrame.tsx`** — `setState` React à chaque frame pour animer la bordure du cooldown.
+2. **Code mort** — `packages/db/` (Drizzle), avec un schéma concurrent de `init.sql`.
+3. **`GameFrame.tsx`** — `setState` React à chaque frame pour animer la bordure du cooldown.
+4. **Cooldown en mémoire** — suffisant en mono-instance, à déplacer dans Redis avant toute
+   réplication de l'API.

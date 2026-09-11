@@ -13,6 +13,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { createServer } from 'node:net'
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +21,19 @@ import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 
 const INIT_SQL = fileURLToPath(new URL('../../db/init.sql', import.meta.url))
+
+/** Demande au système un port TCP libre sur la boucle locale. */
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address()
+      server.close(() => resolve(port))
+    })
+  })
+}
 
 /** Localise un répertoire bin PostgreSQL contenant initdb et pg_ctl. */
 function findPostgresBin() {
@@ -86,16 +100,31 @@ export async function startTestDatabase() {
   // les désactive et on passe par TCP, mais le répertoire de données reste
   // court par prudence.
   const dataDir = mkdtempSync(join(tmpdir(), 'vp-pg-'))
-  const port    = 50000 + Math.floor(Math.random() * 10000)
   const user    = 'voxelplace'
 
   run(join(bin, 'initdb'), ['-D', dataDir, '-U', user, '--auth=trust', '-E', 'UTF8'], 'initdb')
-  run(join(bin, 'pg_ctl'), [
-    '-D', dataDir,
-    '-o', `-p ${port} -c listen_addresses=127.0.0.1 -c unix_socket_directories='' -c fsync=off`,
-    '-l', join(dataDir, 'server.log'),
-    '-w', 'start',
-  ], 'pg_ctl start')
+
+  // Le port était tiré au hasard : les fichiers de test démarrant leur cluster
+  // en parallèle, deux d'entre eux tombaient parfois sur le même. Le second
+  // échouait à démarrer et tous ses tests étaient annulés — rapportés comme
+  // « cancelled », pas comme « fail », ce qui rendait l'incident facile à
+  // manquer. On demande désormais un port libre au système, et on réessaie
+  // avec un autre si un processus s'en empare entre-temps.
+  let port
+  for (let attempt = 1; ; attempt++) {
+    port = await findFreePort()
+    try {
+      run(join(bin, 'pg_ctl'), [
+        '-D', dataDir,
+        '-o', `-p ${port} -c listen_addresses=127.0.0.1 -c unix_socket_directories='' -c fsync=off`,
+        '-l', join(dataDir, 'server.log'),
+        '-w', 'start',
+      ], 'pg_ctl start')
+      break
+    } catch (err) {
+      if (attempt >= 3) throw err
+    }
+  }
 
   const url  = `postgresql://${user}@127.0.0.1:${port}/postgres`
   const pool = new pg.Pool({ connectionString: url })
@@ -112,8 +141,36 @@ export async function startTestDatabase() {
   }
 }
 
+/**
+ * Attend que le pool n'ait plus aucune requête en vol.
+ *
+ * Le code de production écrit volontairement sans `await` — l'insertion dans
+ * pixel_history ne doit pas retarder l'affichage du pixel. En test, une de ces
+ * écritures peut atterrir *après* le TRUNCATE du test suivant et y laisser une
+ * ligne fantôme : de quoi faire échouer, de loin en loin, un test qui vérifie
+ * qu'une table est vide.
+ */
+async function waitForIdlePool(pool, timeout = 10_000) {
+  // waitingCount compte aussi les requêtes en file, qui n'ont pas encore
+  // obtenu de connexion : elles écriront plus tard, elles aussi.
+  const busy = () => pool.totalCount - pool.idleCount + pool.waitingCount > 0
+  const deadline = Date.now() + timeout
+  while (busy()) {
+    if (Date.now() > deadline) {
+      // Tronquer malgré tout produirait un échec lointain et trompeur dans un
+      // autre test. Mieux vaut échouer ici, là où se trouve la vraie cause.
+      throw new Error(`le pool PostgreSQL ne s'est pas vidé en ${timeout} ms`)
+    }
+    await new Promise(r => setTimeout(r, 5))
+  }
+  // Un tour de boucle supplémentaire : une requête peut avoir été rendue au
+  // pool sans que sa promesse ait encore été résolue.
+  await new Promise(r => setImmediate(r))
+}
+
 /** Vide toutes les tables entre deux tests, sans retoucher au schéma. */
 export async function truncateAll(pool) {
+  await waitForIdlePool(pool)
   await pool.query(`
     TRUNCATE users, pixel_history, shared_zones, bans, moderation_logs,
              reports, user_stats, user_color_counts, user_unlocks, pixel_messages

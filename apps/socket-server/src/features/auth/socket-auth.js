@@ -4,6 +4,7 @@
 // ils ont accès à la grille en lecture seule (pixel:place les refusera).
 
 import { verifyToken } from './routes.js'
+import { logger } from '../../shared/logger.js'
 
 /**
  * Construit le middleware de handshake Socket.io.
@@ -25,7 +26,7 @@ export function createSocketAuth(jwtSecret) {
         }
       }
     } catch (err) {
-      console.error('[socket:auth]', err.message)
+      logger.error({ err: err.message }, 'socket:auth')
     }
     next()
   }

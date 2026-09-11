@@ -17,6 +17,7 @@ import { isValidCoord } from '../canvas/utils.js'
 import { parsePositiveInt } from '../../shared/query.js'
 import { requireAdmin as checkAdmin } from '../auth/require-admin.js'
 import { constantTimeEqual } from '../../shared/crypto.js'
+import { logger } from '../../shared/logger.js'
 
 
 
@@ -51,7 +52,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
       `UPDATE users SET role = 'superuser'
        WHERE LOWER(username) LIKE 'hbtn_%' AND role = 'user'`
     )
-    console.log(`[Admin] ${rowCount} comptes hbtn_* promus superuser`)
+    logger.info(`[Admin] ${rowCount} comptes hbtn_* promus superuser`)
     reply.send({ ok: true, promoted: rowCount })
   })
 
@@ -72,7 +73,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     )
     if (rowCount === 0) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
-    console.log(`[Admin] ${username} → role:${role}`)
+    logger.info(`[Admin] ${username} → role:${role}`)
     reply.send({ ok: true, username, role })
   })
 
@@ -245,7 +246,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     // Notifie tous les clients de recharger le canvas
     io.emit('canvas:reload')
 
-    console.log(`[Admin] Canvas restauré depuis PostgreSQL — ${rows.length} pixels`)
+    logger.info(`[Admin] Canvas restauré depuis PostgreSQL — ${rows.length} pixels`)
     reply.send({ ok: true, restored: rows.length })
   })
 
@@ -283,7 +284,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
       io.sockets.sockets.get(socketId)?.disconnect(true)
     }
 
-    console.log(`[Admin] ${username} banni`)
+    logger.info(`[Admin] ${username} banni`)
     reply.status(201).send({ ok: true, username, expires_at })
   })
 
@@ -308,7 +309,7 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
       [username, admin]
     )
 
-    console.log(`[Admin] ${username} débanni`)
+    logger.info(`[Admin] ${username} débanni`)
     reply.send({ ok: true, username })
   })
 

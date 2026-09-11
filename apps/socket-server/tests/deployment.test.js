@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -111,6 +112,36 @@ describe('docker-compose', () => {
 describe('pipeline CI/CD', () => {
   const workflow = read('.github/workflows/deploy.yml')
 
+  it('garde le script de déploiement dans un seul bloc YAML', () => {
+    // Une suggestion de revue acceptée a désindenté une ligne du script. Dans
+    // un bloc « script: | », une ligne moins indentée clôt le bloc : le
+    // fichier est devenu invalide, GitHub n'a lancé aucun job — ni tests, ni
+    // déploiement — et le reste du script aurait été perdu.
+    const lines   = workflow.split('\n')
+    const start   = lines.findIndex(l => /^\s*script: \|\s*$/.test(l))
+    assert.notEqual(start, -1, 'bloc « script: | » introuvable')
+    const baseIndent = lines[start].search(/\S/)
+
+    const block = []
+    for (const line of lines.slice(start + 1)) {
+      if (line.trim() === '') { block.push(line); continue }
+      if (line.search(/\S/) <= baseIndent) break
+      block.push(line)
+    }
+    const script = block.join('\n')
+    for (const expected of ['git reset --hard origin/main', 'docker compose build', 'docker image prune', 'Plugin Minecraft']) {
+      assert.ok(script.includes(expected),
+        `« ${expected} » est hors du bloc script : une ligne a probablement perdu son indentation`)
+    }
+  })
+
+  it('démarre tous les services, pas seulement ceux reconstruits', () => {
+    const script = workflow.slice(workflow.indexOf('script: |'))
+      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
+    assert.match(script, /docker compose up -d\s*$/m,
+      'restreindre « up -d » à quelques services laisse nginx arrêté s\'il ne tournait pas')
+  })
+
   it('construit le frontend, et pas seulement ses tests', () => {
     // Les tests ne type-checkent pas : sans build, une erreur TypeScript passe
     // la CI et ne casse qu'au moment du docker build, sur le serveur.
@@ -142,6 +173,22 @@ describe('pipeline CI/CD', () => {
       'sans set -e, un build raté laisse redémarrer l\'image précédente en silence')
   })
 
+  it('applique les changements de nginx.conf, que « up -d » ne recrée pas', () => {
+    // nginx.conf est monté en volume : modifier le fichier ne change pas la
+    // définition du service, donc « docker compose up -d » laisse le conteneur
+    // tourner avec l'ancienne configuration. Le correctif de /health est ainsi
+    // resté sans effet.
+    const compose = read('docker-compose.yml')
+    if (!/nginx\.conf:\/etc\/nginx/.test(compose)) return  // plus monté : rien à recharger
+
+    const script = workflow.slice(workflow.indexOf('script: |'))
+      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
+    assert.match(script, /--force-recreate voxelplace-nginx|restart voxelplace-nginx|nginx -s reload/,
+      'le déploiement doit recharger nginx quand sa configuration change')
+    assert.match(script, /nginx -t/,
+      'la configuration doit être validée avant d\'être appliquée')
+  })
+
   it('ne dépend pas de sudo, indisponible dans un shell SSH sans terminal', () => {
     const script = workflow.slice(workflow.indexOf('script: |'))
     // Les commentaires du script sont exclus : ils expliquent justement
@@ -152,6 +199,39 @@ describe('pipeline CI/CD', () => {
       .join('\n')
     assert.ok(!/\bsudo\b/.test(code),
       'sudo ne peut pas demander de mot de passe ici : utiliser docker cp')
+  })
+})
+
+describe('scripts npm', () => {
+  const pkg = JSON.parse(read('package.json'))
+
+  it('ne cible que des chemins présents dans le dépôt', () => {
+    // .gitignore contient tools/ : le dossier existe sur la machine de
+    // développement mais pas sur un dépôt cloné. Un script qui le vise passe
+    // en local et fait échouer la CI, où ESLint sort en erreur sur un motif
+    // sans correspondance.
+    const tracked = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    if (tracked.status !== 0) return  // hors dépôt Git : rien à vérifier
+
+    const files = tracked.stdout.split('\n').filter(Boolean)
+    const isTracked = (p) => files.some(f => f === p || f.startsWith(`${p}/`))
+
+    // Seuls les outils d'analyse sont concernés : ils échouent sur un motif
+    // sans correspondance. Une commande comme « rm -rf node_modules » vise
+    // légitimement un chemin non versionné.
+    const ANALYSERS = /^(eslint|tsc|vitest|prettier)\b/
+
+    for (const [name, command] of Object.entries(pkg.scripts ?? {})) {
+      if (!ANALYSERS.test(command.trim())) continue
+      for (const arg of command.split(/\s+/).slice(1)) {
+        if (arg.startsWith('-') || arg.includes('=') || arg.includes('*')) continue
+        if (!existsSync(join(ROOT, arg))) continue  // pas un chemin local
+        assert.ok(
+          isTracked(arg),
+          `le script "${name}" cible "${arg}", qui n'est pas versionné — il échouera en CI`
+        )
+      }
+    }
   })
 })
 
