@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { apiDeleteAccount } from '../api'
 import { useAuthStore } from '../store'
 import { notify } from '@features/notifications/store'
-import { BORDER_COLOR, ACCENT_RED, MUTED_TEXT, TEXT_COLOR } from '@features/hud/theme'
+import { Button } from '@shared/ui'
 
 interface Props {
   /** Appelé une fois le compte supprimé, pour fermer la fenêtre qui l'accueille. */
@@ -59,18 +59,7 @@ export function DeleteAccountSection({ onDeleted }: Props) {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        style={{
-          padding:      '8px 0',
-          background:   'transparent',
-          border:       'none',
-          color:        MUTED_TEXT,
-          fontSize:     12,
-          cursor:       'pointer',
-          textDecoration: 'underline',
-          textUnderlineOffset: 3,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = ACCENT_RED)}
-        onMouseLeave={(e) => (e.currentTarget.style.color = MUTED_TEXT)}
+        className="text-sm text-fg-subtle underline underline-offset-4 transition-colors hover:text-danger"
       >
         Supprimer mon compte…
       </button>
@@ -80,33 +69,18 @@ export function DeleteAccountSection({ onDeleted }: Props) {
   return (
     <form
       onSubmit={submit}
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); cancel() } }}
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); cancel() } }}
       aria-describedby={ids.details}
-      style={{
-        display:       'flex',
-        flexDirection: 'column',
-        gap:           12,
-        border:        `1px solid ${ACCENT_RED}`,
-        borderRadius:  8,
-        padding:       14,
-        background:    `${ACCENT_RED}0d`,
-      }}
+      className="flex flex-col gap-3 rounded-control border border-danger/40 bg-danger/5 p-4"
     >
-      <span style={{ color: ACCENT_RED, fontSize: 13, fontWeight: 700, fontFamily: 'monospace' }}>
-        Supprimer définitivement mon compte
-      </span>
+      <p className="text-sm font-semibold text-danger">Supprimer définitivement mon compte</p>
 
-      <div id={ids.details} style={{ color: TEXT_COLOR, fontSize: 12, lineHeight: 1.6 }}>
-        <p style={{ margin: 0 }}>Seront effacés : ton compte, ta progression, tes déblocages et tes statistiques.</p>
-        <p style={{ margin: '6px 0 0' }}>
-          Tes pixels restent sur le canvas, mais ne portent plus ton pseudo.
-          Cette action est irréversible.
-        </p>
+      <div id={ids.details} className="flex flex-col gap-1.5 text-sm text-fg-muted">
+        <p>Seront effacés : ton compte, ta progression, tes déblocages et tes statistiques.</p>
+        <p>Tes pixels restent sur le canvas, mais ne portent plus ton pseudo. Cette action est irréversible.</p>
       </div>
 
-      <label htmlFor={ids.password} style={{ color: MUTED_TEXT, fontSize: 12 }}>
-        Confirme avec ton mot de passe
-      </label>
+      <label htmlFor={ids.password} className="text-sm text-fg">Confirme avec ton mot de passe</label>
       <input
         ref={passwordRef}
         id={ids.password}
@@ -115,48 +89,16 @@ export function DeleteAccountSection({ onDeleted }: Props) {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         aria-invalid={error ? true : undefined}
-        style={{
-          background:   '#1a1b26',
-          border:       `1px solid ${error ? ACCENT_RED : BORDER_COLOR}`,
-          borderRadius: 6,
-          padding:      '8px 10px',
-          color:        TEXT_COLOR,
-          fontSize:     13,
-        }}
+        className={`h-10 rounded-control border bg-bg px-3 text-sm text-fg focus:outline-none focus-visible:outline-2 focus-visible:outline-accent ${error ? 'border-danger' : 'border-line'}`}
       />
 
-      {error && (
-        <p role="alert" style={{ margin: 0, color: ACCENT_RED, fontSize: 12 }}>{error}</p>
-      )}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={cancel}
-          style={{
-            flex: 1, padding: '8px 0', background: 'transparent',
-            border: `1px solid ${BORDER_COLOR}`, borderRadius: 6,
-            color: TEXT_COLOR, fontSize: 12, cursor: 'pointer',
-          }}
-        >
-          Annuler
-        </button>
-        <button
-          type="submit"
-          disabled={!password || pending}
-          style={{
-            flex: 1, padding: '8px 0',
-            background:   !password || pending ? 'transparent' : ACCENT_RED,
-            border:       `1px solid ${ACCENT_RED}`,
-            borderRadius: 6,
-            color:        !password || pending ? ACCENT_RED : '#1a1b26',
-            fontSize:     12, fontWeight: 700,
-            cursor:       !password || pending ? 'not-allowed' : 'pointer',
-            opacity:      !password || pending ? 0.6 : 1,
-          }}
-        >
+      <div className="flex gap-2">
+        <Button onClick={cancel} className="flex-1">Annuler</Button>
+        <Button type="submit" variant="danger" disabled={!password || pending} className="flex-1">
           {pending ? 'Suppression…' : 'Supprimer'}
-        </button>
+        </Button>
       </div>
     </form>
   )

@@ -9,10 +9,10 @@ import { Toolbar } from './Toolbar'
 import { PaletteDock } from './PaletteDock'
 import { ViewCluster } from './ViewCluster'
 
-const SupportModal     = dynamic(() => import('./SupportModal').then(m => ({ default: m.SupportModal })),         { ssr: false })
-const SettingsModal    = dynamic(() => import('./SettingsModal').then(m => ({ default: m.SettingsModal })),       { ssr: false })
-const LeaderboardModal = dynamic(() => import('./LeaderboardModal').then(m => ({ default: m.LeaderboardModal })), { ssr: false })
-const StatsModal       = dynamic(() => import('./StatsModal').then(m => ({ default: m.StatsModal })),             { ssr: false })
+const HelpDialog        = dynamic(() => import('./HelpDialog').then(m => ({ default: m.HelpDialog })),               { ssr: false })
+const SettingsDialog    = dynamic(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })),       { ssr: false })
+const LeaderboardDialog = dynamic(() => import('./LeaderboardDialog').then(m => ({ default: m.LeaderboardDialog })), { ssr: false })
+const StatsDialog       = dynamic(() => import('./StatsDialog').then(m => ({ default: m.StatsDialog })),             { ssr: false })
 const UnlockPanel      = dynamic(() => import('@features/unlocks/components/UnlockPanel').then(m => ({ default: m.UnlockPanel })), { ssr: false })
 
 interface Props {
@@ -58,10 +58,11 @@ export function Hud({ username, onOpenAuth, onLogout }: Props) {
 
       {/* Monté seulement ouvert : fermé, il dépassait de 12 px au bord droit et ses boutons restaient atteignables au clavier */}
       {panel === 'unlocks' && <UnlockPanel open onClose={closePanel} />}
-      {panel === 'leaderboard' && <LeaderboardModal onClose={closePanel} />}
-      {panel === 'stats'       && <StatsModal username={username} onClose={closePanel} />}
-      {panel === 'help'        && <SupportModal onClose={closePanel} />}
-      {panel === 'settings'    && <SettingsModal username={username} onClose={closePanel} onLogout={onLogout} />}
+      {/* Montées en permanence : fermer un <dialog> via close() rend le focus au bouton qui l'a ouvert */}
+      <LeaderboardDialog open={panel === 'leaderboard'} onClose={closePanel} />
+      <StatsDialog       open={panel === 'stats'}       onClose={closePanel} username={username} />
+      <HelpDialog        open={panel === 'help'}        onClose={closePanel} />
+      <SettingsDialog    open={panel === 'settings'}    onClose={closePanel} username={username} onLogout={onLogout} onOpenAuth={onOpenAuth} />
     </>
   )
 }

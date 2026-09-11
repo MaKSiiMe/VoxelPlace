@@ -7,14 +7,15 @@ import { useSocket }      from '@features/realtime/hooks/useSocket'
 import { useCanvasStore } from '@features/canvas/store'
 import { useAuthStore }   from '@features/auth/store'
 import { Toaster }        from '@features/notifications/components/Toaster'
+import { notify }         from '@features/notifications/store'
 import { useSocketNotifications } from '@features/notifications/hooks/useSocketNotifications'
 
 const CanvasEngine = dynamic(
   () => import('@features/canvas/components/CanvasEngine').then(m => ({ default: m.CanvasEngine })),
   { ssr: false }
 )
-const AuthModal = dynamic(
-  () => import('@features/auth/components/AuthModal').then(m => ({ default: m.AuthModal })),
+const AuthDialog = dynamic(
+  () => import('@features/auth/components/AuthDialog').then(m => ({ default: m.AuthDialog })),
   { ssr: false }
 )
 const PixelInspector = dynamic(
@@ -50,9 +51,11 @@ export default function GamePage() {
 
   if (!effectiveUser) return null
 
+  // La déconnexion ouvrait d'office la fenêtre de connexion, qui ne se fermait
+  // pas : on ne pouvait plus simplement regarder la toile.
   function handleLogout() {
     logout()
-    setShowModal(true)
+    notify({ kind: 'info', message: 'Tu es déconnecté. Tu peux continuer à regarder la toile.' })
   }
 
   return (
@@ -62,9 +65,15 @@ export default function GamePage() {
       <Hud username={effectiveUser} onOpenAuth={() => setShowModal(true)} onLogout={handleLogout} />
       <PixelInspector />
       <Toaster />
-      {showModal && (
-        <AuthModal onSuccess={(data) => { login(data); setShowModal(false) }} />
-      )}
+      <AuthDialog
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onSuccess={(data) => {
+          login(data)
+          setShowModal(false)
+          notify({ kind: 'success', message: `Bienvenue, ${data.username} ! Choisis une couleur pour commencer.` })
+        }}
+      />
     </main>
   )
 }

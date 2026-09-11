@@ -68,7 +68,7 @@ export default function PrivacyPage() {
         <ul>
           <li><code>voxelplace:token</code> — jeton JWT d'authentification (expiration 7 jours).</li>
           <li><code>voxelplace:username</code> — votre pseudo, pour l'affichage.</li>
-          <li><code>voxelplace:cookies-consent</code> — votre choix concernant ce bandeau.</li>
+          <li><code>voxelplace:cookies-consent</code> — mémorise que vous avez lu l&apos;information sur le stockage local.</li>
         </ul>
         <p>
           Aucun cookie tiers, traceur publicitaire ou outil d'analyse externe n'est utilisé.
