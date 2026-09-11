@@ -8,6 +8,7 @@ import { isValidCoord } from './features/canvas/utils.js'
 import { authRoutes } from './features/auth/routes.js'
 import { createSocketAuth } from './features/auth/socket-auth.js'
 import { resolvePlayerIdentity } from './features/auth/player-identity.js'
+import { registerPresence, unregisterPresence, presencePayload } from './features/players/presence.js'
 import { playerRoutes } from './features/players/routes.js'
 import { timelapseRoutes } from './features/timelapse/routes.js'
 import { zoneRoutes } from './features/zone/routes.js'
@@ -96,11 +97,7 @@ const connectedPlayers = new Map()
 const usernameToSocket = new Map()
 
 function getPlayersPayload() {
-  const byPlatform = {}
-  for (const { source } of connectedPlayers.values()) {
-    byPlatform[source] = (byPlatform[source] ?? 0) + 1
-  }
-  return { count: connectedPlayers.size, byPlatform }
+  return presencePayload(connectedPlayers)
 }
 
 function broadcastPlayers() {
@@ -141,10 +138,9 @@ io.on('connection', async (socket) => {
   // Le client annonce son pseudo et sa plateforme
   // L'identité enregistrée est celle prouvée au handshake, pas celle annoncée
   socket.on('player:join', (declared = {}) => {
-    const identity = resolvePlayerIdentity(declared, socket.data)
-    if (!identity) return
-    connectedPlayers.set(socket.id, identity)
-    usernameToSocket.set(identity.username.toLowerCase(), socket.id)
+    // Sans identité prouvée, le socket reste compté comme visiteur du web
+    registerPresence(connectedPlayers, usernameToSocket, socket.id,
+      resolvePlayerIdentity(declared, socket.data))
     broadcastPlayers()
   })
 
@@ -280,9 +276,7 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', () => {
     logger.info(`[Socket] Déconnecté : ${socket.id}`)
-    const player = connectedPlayers.get(socket.id)
-    if (player) usernameToSocket.delete(player.username.toLowerCase())
-    connectedPlayers.delete(socket.id)
+    unregisterPresence(connectedPlayers, usernameToSocket, socket.id)
     broadcastPlayers()
   })
 })
