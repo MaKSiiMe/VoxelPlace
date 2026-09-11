@@ -63,12 +63,13 @@ export async function authRoutes(fastify, { pool, redis, jwtSecret, onAccountDel
 
     try {
       const passwordHash = await hashPassword(password)
-      const SUPERUSER_PREFIXES = ['hbtn_', 'tm_', 'pt_']
-      const isSuperuser = SUPERUSER_PREFIXES.some(p => clean.toLowerCase().startsWith(p))
-      const role = isSuperuser ? 'superuser' : 'user'
+      // Tout nouveau compte est un joueur ordinaire. Un pseudo commençant par
+      // hbtn_, tm_ ou pt_ recevait le rôle superuser — donc aucun cooldown —,
+      // et le formulaire d'inscription l'annonçait : n'importe qui pouvait
+      // poser sans limite. Les rôles s'attribuent désormais par un admin.
       const result = await pool.query(
         'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
-        [clean, passwordHash, role]
+        [clean, passwordHash, 'user']
       )
       const user = result.rows[0]
       // Attendu, et non lancé en arrière-plan : ces INSERT continuaient sinon
@@ -118,14 +119,6 @@ export async function authRoutes(fastify, { pool, redis, jwtSecret, onAccountDel
       const valid = await verifyPassword(password, user.password_hash)
       if (!valid) {
         return reply.status(401).send({ error: 'Identifiants incorrects' })
-      }
-
-      // Promotion automatique hbtn_* / tm_* / pt_* → superuser (si créé avant la règle)
-      const SUPERUSER_PREFIXES = ['hbtn_', 'tm_', 'pt_']
-      const shouldPromote = SUPERUSER_PREFIXES.some(p => user.username.toLowerCase().startsWith(p))
-      if (shouldPromote && user.role === 'user') {
-        await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['superuser', user.id])
-        user.role = 'superuser'
       }
 
       const token = signToken({ id: user.id, username: user.username, role: user.role }, jwtSecret)

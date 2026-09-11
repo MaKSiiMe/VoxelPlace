@@ -8,4 +8,4 @@ export type UserRole = 'user' | 'superuser' | 'admin' | 'superadmin'
 // './roles.js' vers './roles.ts', c'est-à-dire ce fichier lui-même, ce qui
 // produit une « Circular definition of import alias » et fait échouer
 // silencieusement le build de production.
-export { SUPERUSER_PREFIXES, ROLE_COOLDOWNS } from './roles.constants.js'
+export { ROLE_COOLDOWNS } from './roles.constants.js'

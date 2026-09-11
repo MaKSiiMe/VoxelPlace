@@ -3,7 +3,7 @@
 
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { createCooldownController, cooldownForStreak, effectiveRole } from '../src/features/canvas/cooldown.js'
+import { createCooldownController, cooldownForStreak } from '../src/features/canvas/cooldown.js'
 
 /** Pool factice : renvoie le rôle et le streak demandés. */
 function fakePool(rows = []) {
@@ -36,20 +36,6 @@ describe('cooldownForStreak', () => {
     assert.equal(cooldownForStreak(19), 30_000)
     assert.equal(cooldownForStreak(20), 20_000)
     assert.equal(cooldownForStreak(999), 20_000)
-  })
-})
-
-describe('effectiveRole', () => {
-  it('promeut un pseudo à préfixe réservé même si la base dit user', () => {
-    assert.equal(effectiveRole('user', 'hbtn_maxime'), 'superuser')
-    assert.equal(effectiveRole('user', 'tm_bob'),      'superuser')
-    assert.equal(effectiveRole('user', 'PT_ALICE'),    'superuser')
-  })
-
-  it('laisse les autres rôles inchangés', () => {
-    assert.equal(effectiveRole('user',       'Alice'),       'user')
-    assert.equal(effectiveRole('admin',      'Alice'),       'admin')
-    assert.equal(effectiveRole('superadmin', 'hbtn_maxime'), 'superadmin')
   })
 })
 
@@ -93,6 +79,16 @@ describe('createCooldownController', () => {
   it('applique la réduction par streak', async () => {
     const c = createCooldownController({ pool: fakePool([{ role: 'user', streak_hours: 20 }]), now: clock })
     assert.equal((await c.check('Assidu')).cooldownMs, 20_000)
+  })
+
+  it('soumet au cooldown un pseudo à préfixe hbtn_, tm_ ou pt_', async () => {
+    // Ces préfixes accordaient le rôle superuser, donc aucun cooldown, à qui
+    // les choisissait. Seul le rôle enregistré en base compte désormais.
+    for (const username of ['hbtn_bot', 'tm_bot', 'PT_BOT']) {
+      const c = createCooldownController({ pool: fakePool([{ role: 'user', streak_hours: 0 }]), now: clock })
+      assert.equal((await c.check(username)).cooldownMs, 60_000)
+      assert.equal((await c.check(username)).wait, 60_000, `${username} ne doit pas échapper au cooldown`)
+    }
   })
 
   it('exempte les comptes de test', async () => {

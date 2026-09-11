@@ -152,12 +152,6 @@ export function AuthModal({ onSuccess }: Props) {
           </button>
         </form>
 
-        {/* Hint hbtn */}
-        {tab === 'register' && (
-          <p style={{ color: BORDER_COLOR, fontSize: 11, margin: 0, textAlign: 'center' }}>
-            Pseudo <code style={{ color: ACCENT_BLUE }}>hbtn_*</code>, <code style={{ color: ACCENT_BLUE }}>tm_*</code>, <code style={{ color: ACCENT_BLUE }}>pt_*</code> → accès superuser automatique
-          </p>
-        )}
 
         {/* Continuer sans compte */}
         <button

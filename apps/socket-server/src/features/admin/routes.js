@@ -44,18 +44,6 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
   const requireAdmin = (req, reply, superAdminOnly = false) =>
     checkAdmin(req, reply, { jwtSecret: JWT_SECRET, superAdminOnly })
 
-  // POST /api/admin/promote-hbtn — passe tous les hbtn_* en superuser (superadmin only)
-  fastify.post('/api/admin/promote-hbtn', async (req, reply) => {
-    if (!requireAdmin(req, reply, true)) return
-
-    const { rowCount } = await pool.query(
-      `UPDATE users SET role = 'superuser'
-       WHERE LOWER(username) LIKE 'hbtn_%' AND role = 'user'`
-    )
-    logger.info(`[Admin] ${rowCount} comptes hbtn_* promus superuser`)
-    reply.send({ ok: true, promoted: rowCount })
-  })
-
   // PATCH /api/admin/users/:username/role — changer le rôle (superadmin uniquement)
   fastify.patch('/api/admin/users/:username/role', async (req, reply) => {
     if (!requireAdmin(req, reply, true)) return
