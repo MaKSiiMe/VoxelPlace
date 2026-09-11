@@ -2,6 +2,7 @@
 
 import { BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED } from '../theme'
 import { useCanvasStore } from '@features/canvas/store'
+import { DeleteAccountSection } from '@features/auth/components/DeleteAccountSection'
 
 interface Props {
   username: string
@@ -137,6 +138,7 @@ export function SettingsModal({ username, onClose, onLogout }: Props) {
               Se déconnecter
             </button>
           )}
+          {role && <DeleteAccountSection onDeleted={onClose} />}
         </div>
       </div>
     </div>

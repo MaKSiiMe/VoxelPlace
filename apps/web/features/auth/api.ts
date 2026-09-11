@@ -29,3 +29,18 @@ export async function apiLogin(username: string, password: string): Promise<Auth
   if (!res.ok) throw new Error(data.error ?? 'Erreur serveur')
   return data
 }
+
+/**
+ * Droit à l'effacement : supprime le compte et détache ses pixels.
+ * Le mot de passe est redemandé par le serveur pour confirmer l'intention.
+ */
+export async function apiDeleteAccount(token: string, password: string): Promise<void> {
+  const res = await fetch(`${API}/api/auth/account`, {
+    method:  'DELETE',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...CSRF_HEADER },
+    body:    JSON.stringify({ password }),
+  })
+  if (res.ok) return
+  const data = await res.json().catch(() => ({}))
+  throw new Error(data.error ?? 'Erreur serveur')
+}

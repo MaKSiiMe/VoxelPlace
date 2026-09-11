@@ -77,7 +77,10 @@ export default function PrivacyPage() {
 
       <Section title="5. Durée de conservation">
         <ul>
-          <li>Compte et historique de pixels : conservés jusqu'à suppression du compte.</li>
+          <li>
+            Compte, progression et attribution de vos pixels : conservés jusqu&apos;à la suppression
+            du compte. Les pixels posés restent ensuite visibles sur le canvas, sans votre pseudo.
+          </li>
           <li>Données de session (JWT) : expiration automatique après 7 jours.</li>
         </ul>
       </Section>
@@ -88,8 +91,9 @@ export default function PrivacyPage() {
           <li><strong>Droit d'accès</strong> — consulter vos données via votre profil public.</li>
           <li><strong>Droit de rectification</strong> — nous contacter pour corriger vos données.</li>
           <li>
-            <strong>Droit à l'effacement</strong> — supprimer votre compte et toutes vos données
-            via <code>DELETE /api/auth/account</code> (authentification requise).
+            <strong>Droit à l&apos;effacement</strong> — depuis le jeu, ouvrez <em>Paramètres</em> puis
+            <em> Supprimer mon compte</em>. Votre compte, votre progression et vos statistiques sont
+            effacés ; vos pixels restent sur le canvas mais ne sont plus associés à votre pseudo.
           </li>
           <li><strong>Droit d'opposition</strong> — vous pouvez jouer en mode lecture seule sans créer de compte.</li>
         </ul>
