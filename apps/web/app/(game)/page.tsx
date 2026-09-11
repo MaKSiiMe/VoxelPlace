@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import dynamic            from 'next/dynamic'
-import { GameFrame }      from '@features/hud/components/GameFrame'
-import { BottomDrawer }   from '@features/hud/components/BottomDrawer'
-import { Notch }          from '@features/hud/components/Notch'
+import { Hud }            from '@features/hud/components/Hud'
 import { useSocket }      from '@features/realtime/hooks/useSocket'
 import { useCanvasStore } from '@features/canvas/store'
 import { useAuthStore }   from '@features/auth/store'
@@ -21,10 +19,6 @@ const AuthModal = dynamic(
 )
 const PixelInspector = dynamic(
   () => import('@features/canvas/components/PixelInspector').then(m => ({ default: m.PixelInspector })),
-  { ssr: false }
-)
-const Minimap = dynamic(
-  () => import('@features/canvas/components/Minimap').then(m => ({ default: m.Minimap })),
   { ssr: false }
 )
 
@@ -65,10 +59,7 @@ export default function GamePage() {
     <main className="w-screen h-screen overflow-hidden">
       <h1 className="sr-only">VoxelPlace — Canvas collaboratif multijoueur</h1>
       <CanvasEngine username={effectiveUser} />
-      <Notch />
-      <BottomDrawer onLogout={handleLogout} onOpenAuth={() => setShowModal(true)} />
-      <GameFrame username={effectiveUser} onLogout={handleLogout} />
-      <Minimap />
+      <Hud username={effectiveUser} onOpenAuth={() => setShowModal(true)} onLogout={handleLogout} />
       <PixelInspector />
       <Toaster />
       {showModal && (

@@ -9,7 +9,7 @@ import { useAuthStore } from '@features/auth/store'
 import { notify } from '@features/notifications/store'
 import { relativeTime } from '@shared/relativeTime'
 import {
-  BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED, MUTED_TEXT, TEXT_COLOR, TASKBAR, THIN,
+  BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED, MUTED_TEXT, TEXT_COLOR,
 } from '@features/hud/theme'
 
 const HISTORY_SHOWN = 10
@@ -88,13 +88,9 @@ export function PixelInspector() {
   return (
     <aside
       aria-labelledby={titleId}
+      // Mobile : au-dessus de la palette, pleine largeur. Grand écran : à côté de la barre d'outils.
+      className="fixed inset-x-3 bottom-[140px] z-[35] max-h-[45dvh] md:inset-x-auto md:bottom-auto md:left-20 md:top-20 md:max-h-[calc(100dvh-180px)] md:w-[300px]"
       style={{
-        position:      'fixed',
-        top:           THIN + 48,
-        left:          TASKBAR + 16,
-        zIndex:        35,
-        width:         'min(300px, calc(100vw - 120px))',
-        maxHeight:     'calc(100vh - 160px)',
         overflowY:     'auto',
         background:    BEZEL_COLOR,
         border:        `1px solid ${BORDER_COLOR}`,

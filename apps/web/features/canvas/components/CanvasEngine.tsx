@@ -18,7 +18,7 @@ export function CanvasEngine({ username }: Props) {
         ref={containerRef}
         className="fixed inset-0"
         style={{
-          background:  '#1a1b26',
+          background:  'var(--color-bg)',
           touchAction: 'none',
           cursor:      'crosshair',
         }}

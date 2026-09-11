@@ -9,7 +9,7 @@ import {
   type FederatedPointerEvent,
 } from 'pixi.js'
 import { useCanvasStore, DEFAULT_COLORS, drainDirtyPixels } from '../store'
-import { viewportState, registerNavigate, unregisterNavigate } from '../viewportState'
+import { viewportState, registerViewportControls, unregisterViewportControls, zoomAround } from '../viewportState'
 import { toDisplayCoords } from '../coords'
 import { shouldPlace, shouldInspect } from '../clickIntent'
 
@@ -91,7 +91,7 @@ export function usePixiCanvas(
       await app.init({
         width:           container.clientWidth,
         height:          container.clientHeight,
-        backgroundColor: 0x1a1b26,
+        backgroundColor: 0x13141c,   // --color-bg
         antialias:       false,
         resolution:      1,
         autoDensity:     false,
@@ -127,10 +127,26 @@ export function usePixiCanvas(
       centerOnOrigin(app, gridSprite)
 
       // ── Register navigate callback for minimap click-to-navigate ──
-      registerNavigate((gx, gy) => {
-        const S = gridSprite.scale.x
-        gridSprite.x = app.renderer.width  / 2 - gx * S
-        gridSprite.y = app.renderer.height / 2 + gy * S
+      const applyZoom = (factor: number, px: number, py: number) => {
+        const next = zoomAround({ x: gridSprite.x, y: gridSprite.y, scale: gridSprite.scale.x }, factor, px, py)
+        gridSprite.scale.x =  next.scale
+        gridSprite.scale.y = -next.scale
+        gridSprite.x = next.x
+        gridSprite.y = next.y
+        useCanvasStore.getState().setPixelSize(next.scale)
+      }
+
+      registerViewportControls({
+        navigate: (gx, gy) => {
+          const S = gridSprite.scale.x
+          gridSprite.x = app.renderer.width  / 2 - gx * S
+          gridSprite.y = app.renderer.height / 2 + gy * S
+        },
+        zoomBy:   (factor) => applyZoom(factor, app.renderer.width / 2, app.renderer.height / 2),
+        recenter: () => {
+          centerOnOrigin(app, gridSprite)
+          useCanvasStore.getState().setPixelSize(gridSprite.scale.x)
+        },
       })
 
       // ── Grid overlay — manipulé directement en DOM via data-attribute ──
@@ -293,20 +309,9 @@ export function usePixiCanvas(
       // ── Zoom ──
       const onWheel = (e: WheelEvent) => {
         e.preventDefault()
-        const MIN = 0.25, MAX = 64
-        const rect     = app.canvas.getBoundingClientRect()
-        const mouseX   = e.clientX - rect.left
-        const mouseY   = e.clientY - rect.top
-        const factor   = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        const oldScale = gridSprite.scale.x
-        const newScale = Math.max(MIN, Math.min(MAX, oldScale * factor))
-        const lx = (mouseX - gridSprite.x) / oldScale
-        const ly = (gridSprite.y - mouseY) / oldScale
-        gridSprite.scale.x =  newScale
-        gridSprite.scale.y = -newScale
-        gridSprite.x = mouseX - lx * newScale
-        gridSprite.y = mouseY + ly * newScale
-        useCanvasStore.getState().setPixelSize(newScale)
+        const rect   = app.canvas.getBoundingClientRect()
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+        applyZoom(factor, e.clientX - rect.left, e.clientY - rect.top)
       }
       const onContextMenu = (e: MouseEvent) => e.preventDefault()
       container.addEventListener('contextmenu', onContextMenu)
@@ -343,7 +348,7 @@ export function usePixiCanvas(
         resizeObs?.disconnect()
         unsubGrid?.()
         unsubFullGrid?.()
-        unregisterNavigate()
+        unregisterViewportControls()
       }
 
       initComplete = true

@@ -1,7 +1,7 @@
 'use client'
 
 import { useNotifications, type NotificationKind } from '../store'
-import { BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_GREEN, ACCENT_RED, MUTED_TEXT, TEXT_COLOR, THIN } from '@features/hud/theme'
+import { BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_GREEN, ACCENT_RED, MUTED_TEXT, TEXT_COLOR } from '@features/hud/theme'
 
 const ACCENT: Record<NotificationKind, string> = {
   info:    ACCENT_BLUE,
@@ -31,17 +31,8 @@ export function Toaster() {
     <section
       aria-label="Notifications"
       aria-live="polite"
-      style={{
-        position:      'fixed',
-        top:           THIN + 16,
-        right:         THIN + 16,
-        zIndex:        40,
-        display:       'flex',
-        flexDirection: 'column',
-        gap:           8,
-        width:         'min(340px, calc(100vw - 120px))',
-        pointerEvents: 'none',
-      }}
+      // Sous la rangée du haut sur mobile (occupée par la barre d'outils), en haut à droite ailleurs
+      className="pointer-events-none fixed inset-x-3 top-[72px] z-40 flex flex-col gap-2 md:inset-x-auto md:right-3 md:top-3 md:w-[340px]"
     >
       {items.map((n) => (
         <div
