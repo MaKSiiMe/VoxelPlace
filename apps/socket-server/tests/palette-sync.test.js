@@ -108,3 +108,26 @@ describe('palette — plugin Minecraft', () => {
     assert.ok(!ids.has(16), 'un identifiant hors palette est déclaré')
   })
 })
+
+describe('authentification du pont — accord Java ↔ Node', () => {
+  // Le plugin et le serveur doivent s'accorder sur le nom de la clé du
+  // handshake. S'ils divergent, le plugin se connecte normalement, mais en
+  // lecture seule : les pixels posés dans Minecraft sont refusés sans que rien
+  // ne signale pourquoi. Un test d'intégration croisé (client Java du jar
+  // contre le serveur Node) a validé ce contrat ; celui-ci empêche qu'il dérive.
+  const java   = read('apps/game-bridges/minecraft/src/main/java/fr/voxelplace/minecraft/SocketManager.java')
+  const server = read('apps/socket-server/src/features/auth/socket-auth.js')
+
+  it('le plugin présente la clé que le serveur lit', () => {
+    const javaKey = java.match(/setAuth\(Map\.of\("(\w+)"/)?.[1]
+    assert.ok(javaKey, 'le plugin doit présenter un secret au handshake via setAuth')
+    assert.ok(server.includes(`auth.${javaKey}`), `le serveur ne lit pas auth.${javaKey}`)
+  })
+
+  it('le config.yml par défaut du plugin déclare la clé de configuration lue par le code', () => {
+    const configKey = java.match(/getString\("(bridge-token)"/)?.[1]
+    assert.ok(configKey, 'le plugin doit lire son secret dans la configuration')
+    const config = read('apps/game-bridges/minecraft/src/main/resources/config.yml')
+    assert.match(config, new RegExp(`^${configKey}:`, 'm'))
+  })
+})

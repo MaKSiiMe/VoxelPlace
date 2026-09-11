@@ -1,6 +1,11 @@
 # URL du serveur VoxelPlace (sans trailing slash)
 server-url: "http://localhost"
 
+# Secret partagé avec le serveur — même valeur que BRIDGE_TOKEN dans le .env
+# du serveur. Sans lui, les pixels posés depuis Minecraft sont refusés.
+# Générer une valeur avec : openssl rand -hex 32
+bridge-token: ""
+
 # Préfixe affiché dans le chat
 prefix: "&6[VoxelPlace]&r "
 

@@ -226,6 +226,13 @@ Ces défauts n'étaient pas dans l'audit initial : ils sont apparus en écrivant
 - **`/health` inaccessible** — nginx ne routait que `/api/` et `/socket.io/`.
 - **Test et production sur des versions Node différentes** — CI sur 22, Dockerfiles sur 20.
 
+### Également traité
+
+- **Code mort** — `packages/db/` (Drizzle, jamais importé, schéma concurrent de `init.sql`)
+  supprimé, avec sa ligne `COPY` dans le Dockerfile web et son entrée dans le lockfile.
+- **`GameFrame.tsx`** — la bordure du cooldown est animée directement sur le SVG ; React ne
+  re-rend plus le HUD à chaque frame, et la boucle ne tourne plus hors cooldown.
+
 ### Ce qui reste ouvert
 
 Par ordre de valeur :
@@ -233,7 +240,5 @@ Par ordre de valeur :
 1. **Couverture restante** — le chat, le timelapse et les dashboards joueur n'ont pas de tests ;
    le frontend n'est couvert que sur ses stores et utilitaires, pas ses composants ; le plugin
    Java n'a aucun test.
-2. **Code mort** — `packages/db/` (Drizzle), avec un schéma concurrent de `init.sql`.
-3. **`GameFrame.tsx`** — `setState` React à chaque frame pour animer la bordure du cooldown.
-4. **Cooldown en mémoire** — suffisant en mono-instance, à déplacer dans Redis avant toute
+2. **Cooldown en mémoire** — suffisant en mono-instance, à déplacer dans Redis avant toute
    réplication de l'API.
