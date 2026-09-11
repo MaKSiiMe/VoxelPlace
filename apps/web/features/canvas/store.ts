@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { socket } from '@features/realtime/socket'
 import { ROLE_COOLDOWNS, type UserRole } from '@voxelplace/types'
+import { notify } from '@features/notifications/store'
+import { placementRejectedNotification } from '@features/notifications/socketEvents'
 
 export type { UserRole }
 export { ROLE_COOLDOWNS }
@@ -148,9 +150,11 @@ export const useCanvasStore = create<CanvasStore>()(
         { x, y, colorId: selectedColor, username, source: 'web' },
         (ack: { ok?: boolean; error?: string; cooldown?: number; role?: UserRole }) => {
           if (!ack?.ok) {
-            // rollback de l'optimistic update
-            console.warn('[pixel:place] rejected:', ack?.error)
+            // Rollback de la pose optimiste, et explication au joueur : le pixel
+            // disparaissait jusqu'ici sans qu'il sache pourquoi (cooldown, ban,
+            // session expirée…).
             updatePixel(x, y, previousColor)
+            notify(placementRejectedNotification(ack?.error ?? 'Pose refusée par le serveur.'))
           }
           // Met à jour le cooldown avec la valeur réelle du serveur (en ms)
           if (typeof ack?.cooldown === 'number' && ack.cooldown > 0) {

@@ -10,6 +10,7 @@ import {
 } from 'pixi.js'
 import { useCanvasStore, DEFAULT_COLORS, drainDirtyPixels } from '../store'
 import { viewportState, registerNavigate, unregisterNavigate } from '../viewportState'
+import { toDisplayCoords } from '../coords'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
@@ -217,7 +218,7 @@ export function usePixiCanvas(
         const { gridSize, setHoveredPixel, setCursorScreenPos } = useCanvasStore.getState()
 
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          setHoveredPixel({ x: gx - GRID_HALF, y: GRID_HALF - gy })
+          setHoveredPixel(toDisplayCoords(gx, gy, gridSize))
           const scale   = gridSprite.scale.x
           const screenX = gridSprite.x + gx * scale
           const screenY = gridSprite.y - (gy + 1) * scale
