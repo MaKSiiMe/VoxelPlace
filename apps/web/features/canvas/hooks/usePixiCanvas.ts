@@ -12,6 +12,7 @@ import { useCanvasStore, DEFAULT_COLORS, drainDirtyPixels } from '../store'
 import { viewportState, registerViewportControls, unregisterViewportControls, zoomAround } from '../viewportState'
 import { toDisplayCoords } from '../coords'
 import { shouldPlace, shouldInspect } from '../clickIntent'
+import { TouchGesture } from '../gestures'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
@@ -221,6 +222,7 @@ export function usePixiCanvas(
       let pressStart: { x: number; y: number; selectedColor: number | null } | null = null
 
       gridSprite.on('pointerdown', (e: FederatedPointerEvent) => {
+        if (e.pointerType === 'touch') return   // géré par le suivi de gestes plus bas
         const local  = e.getLocalPosition(gridSprite)
         const gx     = Math.floor(local.x)
         const gy     = Math.floor(local.y)
@@ -235,7 +237,7 @@ export function usePixiCanvas(
 
       // Relâchement : en mode Exploration, un clic sans glissement ouvre l'inspecteur
       gridSprite.on('pointerup', (e: FederatedPointerEvent) => {
-        if (!pressStart) return
+        if (e.pointerType === 'touch' || !pressStart) return
         const local  = e.getLocalPosition(gridSprite)
         const gx     = Math.floor(local.x)
         const gy     = Math.floor(local.y)
@@ -313,6 +315,55 @@ export function usePixiCanvas(
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
         applyZoom(factor, e.clientX - rect.left, e.clientY - rect.top)
       }
+      // ── Gestes tactiles : déplacement, pincement, tap ──
+      const gesture = new TouchGesture(() => ({ x: gridSprite.x, y: gridSprite.y, scale: gridSprite.scale.x }))
+      const canvasEl = app.canvas
+      const toCanvasPoint = (e: PointerEvent) => {
+        const r = canvasEl.getBoundingClientRect()
+        return { x: e.clientX - r.left, y: e.clientY - r.top }
+      }
+
+      const onTouchDown = (e: PointerEvent) => {
+        if (e.pointerType !== 'touch') return
+        canvasEl.setPointerCapture(e.pointerId)
+        gesture.down(e.pointerId, toCanvasPoint(e))
+      }
+      const onTouchMove = (e: PointerEvent) => {
+        if (e.pointerType !== 'touch') return
+        const t = gesture.move(e.pointerId, toCanvasPoint(e))
+        if (!t) return
+        gridSprite.scale.x =  t.scale
+        gridSprite.scale.y = -t.scale
+        gridSprite.x = t.x
+        gridSprite.y = t.y
+        useCanvasStore.getState().setPixelSize(t.scale)
+      }
+      const onTouchUp = (e: PointerEvent) => {
+        if (e.pointerType !== 'touch') return
+        const tap = gesture.up(e.pointerId)
+        if (!tap) return
+
+        // Même règle qu'à la souris : pose en mode Build, inspection sinon
+        const local = gridSprite.toLocal({ x: tap.x, y: tap.y })
+        const gx = Math.floor(local.x)
+        const gy = Math.floor(local.y)
+        const { gridSize, selectedColor, placePixel, setInspectedPixel } = useCanvasStore.getState()
+        const inBounds = gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize
+        if (shouldPlace({ button: 0, spaceHeld: false, inBounds, selectedColor })) {
+          placePixel(gx, gy, username)
+        } else if (shouldInspect({ button: 0, spaceHeld: false, inBounds, movedPx: 0, selectedColorAtDown: selectedColor })) {
+          setInspectedPixel({ x: gx, y: gy })
+        }
+      }
+      const onTouchCancel = (e: PointerEvent) => {
+        if (e.pointerType === 'touch') gesture.cancel(e.pointerId)
+      }
+
+      canvasEl.addEventListener('pointerdown',   onTouchDown)
+      canvasEl.addEventListener('pointermove',   onTouchMove)
+      canvasEl.addEventListener('pointerup',     onTouchUp)
+      canvasEl.addEventListener('pointercancel', onTouchCancel)
+
       const onContextMenu = (e: MouseEvent) => e.preventDefault()
       container.addEventListener('contextmenu', onContextMenu)
       container.addEventListener('wheel', onWheel, { passive: false })
@@ -341,6 +392,10 @@ export function usePixiCanvas(
       resizeObs.observe(container)
 
       ;(container as HTMLDivElement & { _pixiCleanup?: () => void })._pixiCleanup = () => {
+        canvasEl.removeEventListener('pointerdown',   onTouchDown)
+        canvasEl.removeEventListener('pointermove',   onTouchMove)
+        canvasEl.removeEventListener('pointerup',     onTouchUp)
+        canvasEl.removeEventListener('pointercancel', onTouchCancel)
         container.removeEventListener('contextmenu', onContextMenu)
         container.removeEventListener('wheel', onWheel)
         window.removeEventListener('keydown', onKeyDown)
