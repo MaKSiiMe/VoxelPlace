@@ -10,6 +10,9 @@
 //
 // Persistance : 100 derniers messages en mémoire (pas de DB — ephémère)
 
+import { sanitizeMessage, isValidPixelTarget, createThrottle } from './message.js'
+import { GRID_SIZE } from '../canvas/grid.js'
+
 const MAX_MESSAGE_LENGTH = 200
 const HISTORY_SIZE       = 100
 const RATE_LIMIT_MS      = 1000  // 1 message par seconde par joueur
@@ -17,8 +20,7 @@ const RATE_LIMIT_MS      = 1000  // 1 message par seconde par joueur
 // Historique en mémoire par room
 const histories = new Map()   // room → Message[]
 
-// Anti-spam : dernière émission par username
-const lastMessageAt = new Map()  // username → timestamp
+const throttle = createThrottle(RATE_LIMIT_MS)
 
 function getHistory(room) {
   if (!histories.has(room)) histories.set(room, [])
@@ -31,14 +33,6 @@ function pushMessage(room, msg) {
   if (history.length > HISTORY_SIZE) history.shift()
 }
 
-function sanitize(str) {
-  return str
-    .trim()
-    .slice(0, MAX_MESSAGE_LENGTH)
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
 export function registerChatEvents(io, socket, connectedPlayers) {
 
   // Envoie l'historique global au joueur qui se connecte
@@ -49,24 +43,20 @@ export function registerChatEvents(io, socket, connectedPlayers) {
 
   // Réception d'un message
   socket.on('chat:send', ({ message, room } = {}) => {
+    // Identité prouvée au handshake : un visiteur n'a pas d'entrée ici
     const player = connectedPlayers.get(socket.id)
     if (!player?.username) return
 
-    // Validation du message
-    if (typeof message !== 'string' || !message.trim()) return
-
-    // Anti-spam
-    const now  = Date.now()
-    const last = lastMessageAt.get(player.username) ?? 0
-    if (now - last < RATE_LIMIT_MS) return
-    lastMessageAt.set(player.username, now)
+    const clean = sanitizeMessage(message, MAX_MESSAGE_LENGTH)
+    if (!clean) return
+    if (!throttle.allow(player.username.toLowerCase())) return
 
     // Validation de la room
     const validRoom = validateRoom(room)
 
     const msg = {
       username:  player.username,
-      message:   sanitize(message),
+      message:   clean,
       room:      validRoom,
       timestamp: new Date().toISOString(),
     }
@@ -85,7 +75,8 @@ export function registerChatEvents(io, socket, connectedPlayers) {
   // Rejoindre / quitter une room de zone
   // Le client envoie sa position pour recevoir le chat de la zone courante
   socket.on('chat:join', ({ x, y } = {}) => {
-    if (typeof x !== 'number' || typeof y !== 'number') return
+    // NaN, Infinity ou décimaux produisaient des rooms « zone:NaN:NaN »
+    if (!isValidPixelTarget(x, y)) return
 
     // Quitte toutes les rooms de zone précédentes
     for (const room of socket.rooms) {
@@ -102,14 +93,21 @@ export function registerChatEvents(io, socket, connectedPlayers) {
   })
 }
 
+const ZONE_SIZE      = 64
+const ZONES_PER_AXIS = Math.ceil(GRID_SIZE / ZONE_SIZE)
+
 // Convertit des coordonnées en identifiant de room de zone (64×64)
 function zoneRoom(x, y) {
-  return `zone:${Math.floor(x / 64)}:${Math.floor(y / 64)}`
+  return `zone:${Math.floor(x / ZONE_SIZE)}:${Math.floor(y / ZONE_SIZE)}`
 }
 
 function validateRoom(room) {
   if (!room || room === 'global') return 'global'
   // Format attendu : 'zone:X:Y'
-  if (/^zone:\d+:\d+$/.test(room)) return room
+  // Bornée à la grille : un indice de zone au-delà ne correspond à aucun pixel
+  const m = /^zone:(\d+):(\d+)$/.exec(room)
+  if (m && Number(m[1]) < ZONES_PER_AXIS && Number(m[2]) < ZONES_PER_AXIS) return room
   return 'global'
 }
+
+export { validateRoom, zoneRoom }
