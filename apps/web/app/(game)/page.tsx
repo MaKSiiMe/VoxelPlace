@@ -19,6 +19,10 @@ const AuthModal = dynamic(
   () => import('@features/auth/components/AuthModal').then(m => ({ default: m.AuthModal })),
   { ssr: false }
 )
+const PixelInspector = dynamic(
+  () => import('@features/canvas/components/PixelInspector').then(m => ({ default: m.PixelInspector })),
+  { ssr: false }
+)
 const Minimap = dynamic(
   () => import('@features/canvas/components/Minimap').then(m => ({ default: m.Minimap })),
   { ssr: false }
@@ -65,6 +69,7 @@ export default function GamePage() {
       <BottomDrawer onLogout={handleLogout} onOpenAuth={() => setShowModal(true)} />
       <GameFrame username={effectiveUser} onLogout={handleLogout} />
       <Minimap />
+      <PixelInspector />
       <Toaster />
       {showModal && (
         <AuthModal onSuccess={(data) => { login(data); setShowModal(false) }} />
