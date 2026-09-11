@@ -15,8 +15,6 @@ function getToken() {
 }
 
 export function AdminDashboard() {
-  const [promoteResult,  setPromoteResult]  = useState<string | null>(null)
-  const [promoteLoading, setPromoteLoading] = useState(false)
   const [restoreResult,  setRestoreResult]  = useState<string | null>(null)
   const [restoreLoading, setRestoreLoading] = useState(false)
 
@@ -36,24 +34,6 @@ export function AdminDashboard() {
       setRestoreResult(`❌ ${err instanceof Error ? err.message : 'Erreur inconnue'}`)
     } finally {
       setRestoreLoading(false)
-    }
-  }
-
-  async function handlePromoteHbtn() {
-    setPromoteLoading(true)
-    setPromoteResult(null)
-    try {
-      const res = await fetch(`${API}/api/admin/promote-hbtn`, {
-        method:  'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erreur serveur')
-      setPromoteResult(`${data.promoted} compte(s) promu(s) superuser`)
-    } catch (err: unknown) {
-      setPromoteResult(err instanceof Error ? err.message : 'Erreur inconnue')
-    } finally {
-      setPromoteLoading(false)
     }
   }
 
@@ -133,36 +113,6 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* Section — Gestion des rôles */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ color: '#c0caf5', fontWeight: 700, fontSize: 15 }}>Gestion des rôles</span>
-          <span style={{ color: BORDER_COLOR, fontSize: 13 }}>
-            Promouvoir tous les comptes hbtn_* / tm_* / pt_* en superuser.
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button
-            style={btnStyle(ACCENT_YELLOW, promoteLoading)}
-            disabled={promoteLoading}
-            onClick={handlePromoteHbtn}
-            onMouseEnter={e => { if (!promoteLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_YELLOW}44` }}
-            onMouseLeave={e => { if (!promoteLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_YELLOW}22` }}
-          >
-            {promoteLoading ? '...' : 'Promouvoir hbtn_* / tm_* / pt_* → superuser'}
-          </button>
-          {promoteResult && (
-            <span style={{
-              color:        promoteResult.includes('Erreur') ? ACCENT_RED : ACCENT_GREEN,
-              fontSize:     13,
-              fontFamily:   'monospace',
-            }}>
-              {promoteResult}
-            </span>
-          )}
-        </div>
-      </div>
 
       {/* Section — Rôles et cooldowns */}
       <div style={cardStyle}>
@@ -180,7 +130,7 @@ export function AdminDashboard() {
           <tbody>
             {[
               { role: 'user',       color: BORDER_COLOR,  cd: '60s',  how: 'Compte standard' },
-              { role: 'superuser',  color: ACCENT_YELLOW, cd: '0s',   how: 'Pseudo hbtn_* / tm_* / pt_* ou promotion manuelle' },
+              { role: 'superuser',  color: ACCENT_YELLOW, cd: '0s',   how: 'Attribution manuelle' },
               { role: 'admin',      color: ACCENT_BLUE,   cd: '0s',   how: 'Attribution manuelle' },
               { role: 'superadmin', color: ACCENT_RED,    cd: '0s',   how: 'Mot de passe admin' },
             ].map(({ role, color, cd, how }) => (

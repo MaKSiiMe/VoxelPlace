@@ -79,9 +79,12 @@ describe('POST /api/auth/register', { skip: skip() }, () => {
     assert.equal((await register({})).statusCode, 400)
   })
 
-  it('attribue le rôle superuser aux préfixes réservés', async () => {
-    const res = await register({ username: 'hbtn_maxime', password: 'motdepasse' })
-    assert.equal(res.json().role, 'superuser')
+  it('n\'accorde aucun privilège selon le pseudo', async () => {
+    // Un pseudo hbtn_, tm_ ou pt_ recevait le rôle superuser — sans cooldown.
+    for (const username of ['hbtn_maxime', 'tm_bob', 'pt_alice']) {
+      const res = await register({ username, password: 'motdepasse' })
+      assert.equal(res.json().role, 'user', `${username} doit rester un joueur ordinaire`)
+    }
   })
 
   it('bloque au-delà de 10 tentatives par minute', async () => {
@@ -123,6 +126,22 @@ describe('POST /api/auth/login', { skip: skip() }, () => {
   it('refuse la requête sans en-tête CSRF', async () => {
     const res = await login({ username: 'Alice', password: 'motdepasse' }, { 'content-type': 'application/json' })
     assert.equal(res.statusCode, 403)
+  })
+
+  it('ne promeut plus un compte à la connexion d\'après son pseudo', async () => {
+    await register({ username: 'hbtn_ancien', password: 'motdepasse' })
+    _resetAttempts()
+    const res = await login({ username: 'hbtn_ancien', password: 'motdepasse' })
+    assert.equal(res.json().role, 'user')
+    const { rows } = await db.pool.query('SELECT role FROM users WHERE username = $1', ['hbtn_ancien'])
+    assert.equal(rows[0].role, 'user')
+  })
+
+  it('conserve le rôle d\'un compte déjà superuser', async () => {
+    await register({ username: 'Beta', password: 'motdepasse' })
+    await db.pool.query(`UPDATE users SET role = 'superuser' WHERE username = 'Beta'`)
+    _resetAttempts()
+    assert.equal((await login({ username: 'Beta', password: 'motdepasse' })).json().role, 'superuser')
   })
 })
 

@@ -7,7 +7,7 @@
 // Acceptable pour un déploiement mono-instance, à déplacer dans Redis le jour
 // où l'API sera répliquée.
 
-import { ROLE_COOLDOWNS, SUPERUSER_PREFIXES } from '@voxelplace/types/roles'
+import { ROLE_COOLDOWNS } from '@voxelplace/types/roles'
 
 const USER_TTL_MS   = 2 * 60 * 1000
 const CLEANUP_MS    = 60_000
@@ -21,14 +21,6 @@ export function cooldownForStreak(streakHours) {
   return ROLE_COOLDOWNS.user
 }
 
-/**
- * Rôle effectif : un pseudo à préfixe réservé est traité comme superuser même
- * si la base n'a pas encore été mise à jour.
- */
-export function effectiveRole(role, username) {
-  const isPrefixed = SUPERUSER_PREFIXES.some(p => username.toLowerCase().startsWith(p))
-  return (role === 'user' && isPrefixed) ? 'superuser' : role
-}
 
 /**
  * Crée un contrôleur de cooldown isolé.
@@ -71,11 +63,12 @@ export function createCooldownController({ pool, testUsernames = new Set(), now 
   async function check(username) {
     if (testUsernames.has(username)) return { wait: 0, cooldownMs: 0 }
 
+    // Le rôle vient de la base, et d'elle seule : il était auparavant rehaussé
+    // en superuser d'après le préfixe du pseudo.
     const { role, streak } = await getUser(username)
-    const effective = effectiveRole(role, username)
 
-    let cooldownMs = ROLE_COOLDOWNS[effective] ?? ROLE_COOLDOWNS.user
-    if (effective === 'user') cooldownMs = cooldownForStreak(streak)
+    let cooldownMs = ROLE_COOLDOWNS[role] ?? ROLE_COOLDOWNS.user
+    if (role === 'user') cooldownMs = cooldownForStreak(streak)
     if (cooldownMs === 0) return { wait: 0, cooldownMs: 0 }
 
     const elapsed = now() - (lastPlaced.get(username) ?? 0)

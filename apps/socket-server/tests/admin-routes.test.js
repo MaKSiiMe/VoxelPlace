@@ -275,6 +275,13 @@ describe('bannissement', { skip: skip() }, () => {
   })
 })
 
+describe('promotion en masse par préfixe', { skip: skip() }, () => {
+  it('n\'existe plus', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/admin/promote-hbtn', headers: auth('superadmin') })
+    assert.equal(res.statusCode, 404)
+  })
+})
+
 describe('PATCH /api/admin/users/:username/role', { skip: skip() }, () => {
   beforeEach(async () => {
     if (db.skipped) return
