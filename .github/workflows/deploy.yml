@@ -126,7 +126,7 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             docker compose build voxelplace-api voxelplace-web
-            docker compose up -d
+docker compose up -d voxelplace-api voxelplace-web
 
             # nginx.conf est monté depuis le dépôt. « up -d » ne recrée pas un
             # conteneur dont seul le contenu d'un fichier monté a changé : nginx
