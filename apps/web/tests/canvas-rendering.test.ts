@@ -111,6 +111,24 @@ describe('placePixel — rollback', () => {
     expect(useCanvasStore.getState().grid![5 * SIZE + 5]).toBe(3)
   })
 
+  test('explique le refus au joueur au lieu d\'annuler la pose en silence', async () => {
+    const { socket } = await import('@features/realtime/socket')
+    const { useNotifications } = await import('../features/notifications/store')
+    useNotifications.getState().clear()
+    vi.mocked(socket.emit).mockImplementation((...args: unknown[]) => {
+      const ack = args[2] as (r: unknown) => void
+      ack({ error: 'Trop vite ! Attends 42s.' })
+      return socket
+    })
+
+    useCanvasStore.getState().placePixel(7, 7, 'alice')
+
+    const items = useNotifications.getState().items
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'error', message: 'Trop vite ! Attends 42s.' })
+    useNotifications.getState().clear()
+  })
+
   test('conserve la couleur posée quand le serveur accepte', async () => {
     const { socket } = await import('@features/realtime/socket')
     vi.mocked(socket.emit).mockImplementation((...args: unknown[]) => {

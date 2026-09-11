@@ -10,6 +10,8 @@ import {
 } from 'pixi.js'
 import { useCanvasStore, DEFAULT_COLORS, drainDirtyPixels } from '../store'
 import { viewportState, registerNavigate, unregisterNavigate } from '../viewportState'
+import { toDisplayCoords } from '../coords'
+import { shouldPlace, shouldInspect } from '../clickIntent'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
@@ -198,14 +200,37 @@ export function usePixiCanvas(
       }
 
       // ── Click → place pixel ──
+      // Appui : pose immédiate en mode Build. On mémorise la position et le mode
+      // pour décider, au relâchement, s'il s'agissait d'un clic d'inspection.
+      let pressStart: { x: number; y: number; selectedColor: number | null } | null = null
+
       gridSprite.on('pointerdown', (e: FederatedPointerEvent) => {
-        if (e.button !== 0) return
         const local  = e.getLocalPosition(gridSprite)
         const gx     = Math.floor(local.x)
         const gy     = Math.floor(local.y)
-        const { gridSize, placePixel } = useCanvasStore.getState()
-        if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
+        const { gridSize, placePixel, selectedColor } = useCanvasStore.getState()
+        const inBounds = gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize
+
+        pressStart = { x: e.clientX, y: e.clientY, selectedColor }
+        if (shouldPlace({ button: e.button, spaceHeld: isSpaceDown, inBounds, selectedColor })) {
           placePixel(gx, gy, username)
+        }
+      })
+
+      // Relâchement : en mode Exploration, un clic sans glissement ouvre l'inspecteur
+      gridSprite.on('pointerup', (e: FederatedPointerEvent) => {
+        if (!pressStart) return
+        const local  = e.getLocalPosition(gridSprite)
+        const gx     = Math.floor(local.x)
+        const gy     = Math.floor(local.y)
+        const { gridSize, setInspectedPixel } = useCanvasStore.getState()
+        const inBounds = gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize
+        const movedPx  = Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y)
+        const selectedColorAtDown = pressStart.selectedColor
+        pressStart = null
+
+        if (shouldInspect({ button: e.button, spaceHeld: isSpaceDown, inBounds, movedPx, selectedColorAtDown })) {
+          setInspectedPixel({ x: gx, y: gy })
         }
       })
 
@@ -217,7 +242,7 @@ export function usePixiCanvas(
         const { gridSize, setHoveredPixel, setCursorScreenPos } = useCanvasStore.getState()
 
         if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
-          setHoveredPixel({ x: gx - GRID_HALF, y: GRID_HALF - gy })
+          setHoveredPixel(toDisplayCoords(gx, gy, gridSize))
           const scale   = gridSprite.scale.x
           const screenX = gridSprite.x + gx * scale
           const screenY = gridSprite.y - (gy + 1) * scale

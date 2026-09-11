@@ -66,3 +66,27 @@ describe('validateReport — champs optionnels', () => {
     assert.equal(result.target_username, null)
   })
 })
+
+describe('validateReport — bornes', () => {
+  it('rejette les coordonnées hors grille ou décimales', () => {
+    assert.equal(validateReport({ target_type: 'pixel', x: 2048, y: 0 }), null)
+    assert.equal(validateReport({ target_type: 'pixel', x: -1,   y: 0 }), null)
+    assert.equal(validateReport({ target_type: 'pixel', x: 1.5,  y: 0 }), null)
+  })
+
+  it('assainit et borne le pseudo signalé', () => {
+    const r = validateReport({ target_type: 'player', target_username: '<b>' + 'a'.repeat(50) })
+    assert.ok(r.target_username.length <= 32)
+    assert.ok(!r.target_username.includes('<'))
+  })
+
+  it('tronque le motif à la taille de la colonne et ignore un motif vide', () => {
+    assert.equal(validateReport({ target_type: 'pixel', x: 0, y: 0, reason: 'x'.repeat(300) }).reason.length, 256)
+    assert.equal(validateReport({ target_type: 'pixel', x: 0, y: 0, reason: '   ' }).reason, null)
+  })
+
+  it('ne garde pas de coordonnées sur un signalement de joueur', () => {
+    const r = validateReport({ target_type: 'player', target_username: 'bob', x: 5, y: 5 })
+    assert.equal(r.x, null)
+  })
+})

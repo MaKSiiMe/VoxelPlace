@@ -44,6 +44,14 @@ export async function placePixel({ redis, pool, cooldown }, data, { verifiedUser
     if (verifiedUsername.toLowerCase() !== pixel.username.toLowerCase()) {
       return { ok: false, error: 'Identité non autorisée' }
     }
+    // Un JWT reste valide sept jours : sans cette vérification, un compte
+    // supprimé continuait de poser des pixels sous son ancien pseudo, recréant
+    // l'historique qu'on venait d'effacer. getUser est mis en cache.
+    const { exists } = await cooldown.getUser(verifiedUsername)
+    if (!exists) {
+      return { ok: false, error: 'Ce compte n\'existe plus.' }
+    }
+
     // Le nom du jeton fait autorité : c'est celui enregistré en base. Le client
     // peut envoyer « alice » pour le compte « Alice » — la comparaison ci-dessus
     // l'accepte, mais laisser passer cette casse créerait une seconde ligne de

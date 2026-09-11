@@ -51,13 +51,17 @@ export function createCooldownController({ pool, testUsernames = new Set(), now 
         'SELECT role, streak_hours FROM users WHERE LOWER(username) = LOWER($1)',
         [username]
       )
-      const data = { role: rows[0]?.role ?? 'user', streak: rows[0]?.streak_hours ?? 0 }
+      const data = {
+        role:   rows[0]?.role ?? 'user',
+        streak: rows[0]?.streak_hours ?? 0,
+        exists: rows.length > 0,
+      }
       userCache.set(key, { data, fetchedAt: now() })
       return data
     } catch {
       // Base indisponible : on retombe sur le cooldown le plus strict plutôt
       // que de laisser passer les poses sans limite.
-      return { role: 'user', streak: 0 }
+      return { role: 'user', streak: 0, exists: true }
     }
   }
 

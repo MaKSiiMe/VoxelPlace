@@ -8,6 +8,8 @@ import { Notch }          from '@features/hud/components/Notch'
 import { useSocket }      from '@features/realtime/hooks/useSocket'
 import { useCanvasStore } from '@features/canvas/store'
 import { useAuthStore }   from '@features/auth/store'
+import { Toaster }        from '@features/notifications/components/Toaster'
+import { useSocketNotifications } from '@features/notifications/hooks/useSocketNotifications'
 
 const CanvasEngine = dynamic(
   () => import('@features/canvas/components/CanvasEngine').then(m => ({ default: m.CanvasEngine })),
@@ -15,6 +17,10 @@ const CanvasEngine = dynamic(
 )
 const AuthModal = dynamic(
   () => import('@features/auth/components/AuthModal').then(m => ({ default: m.AuthModal })),
+  { ssr: false }
+)
+const PixelInspector = dynamic(
+  () => import('@features/canvas/components/PixelInspector').then(m => ({ default: m.PixelInspector })),
   { ssr: false }
 )
 const Minimap = dynamic(
@@ -46,6 +52,7 @@ export default function GamePage() {
   }, [role, setRole])
 
   useSocket(effectiveUser)
+  useSocketNotifications()
 
   if (!effectiveUser) return null
 
@@ -62,6 +69,8 @@ export default function GamePage() {
       <BottomDrawer onLogout={handleLogout} onOpenAuth={() => setShowModal(true)} />
       <GameFrame username={effectiveUser} onLogout={handleLogout} />
       <Minimap />
+      <PixelInspector />
+      <Toaster />
       {showModal && (
         <AuthModal onSuccess={(data) => { login(data); setShowModal(false) }} />
       )}

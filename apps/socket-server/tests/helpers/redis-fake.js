@@ -4,7 +4,7 @@
 // l'inventaire exact de la surface Redis du projet :
 //
 //   get · getBuffer · set · setrange · del · exists
-//   hset · hget · hgetall · hdel · hincrby
+//   hset · hget · hgetall · hdel · hincrby · hscan
 //   ping · quit
 //
 // Un mock générique est tentant, mais le cœur du projet repose sur SETRANGE
@@ -107,6 +107,22 @@ export class FakeRedis {
     let n = 0
     for (const f of fields.flat()) if (hash.delete(f)) n++
     return n
+  }
+
+  /**
+   * HSCAN — parcours par curseur. Renvoie [curseurSuivant, [champ, valeur, …]],
+   * « '0' » signalant la fin, comme Redis. COUNT est respecté pour que le code
+   * appelant soit réellement exercé sur plusieurs pages.
+   */
+  async hscan(key, cursor, ...args) {
+    const fail = this.#check(); if (fail) return fail
+    const countIdx = args.findIndex(a => String(a).toUpperCase() === 'COUNT')
+    const count    = countIdx >= 0 ? parseInt(args[countIdx + 1], 10) : 10
+    const entries  = [...(this.hashes.get(key) ?? new Map())]
+    const start    = parseInt(cursor, 10) || 0
+    const page     = entries.slice(start, start + count)
+    const next     = start + count >= entries.length ? '0' : String(start + count)
+    return [next, page.flat()]
   }
 
   async hincrby(key, field, increment) {

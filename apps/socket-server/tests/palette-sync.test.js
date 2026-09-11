@@ -15,10 +15,15 @@ import { PALETTE_HEX, PALETTE_RGB } from '../src/shared/palette.js'
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
 
-/** Extrait les couleurs hexadécimales d'un tableau JS/TS nommé. */
+/**
+ * Extrait les couleurs hexadécimales d'un tableau JS/TS nommé.
+ * On cible la déclaration « NOM = [ » et non la première occurrence du nom,
+ * qui peut apparaître avant dans un commentaire.
+ */
 function extractHexArray(source, arrayName) {
-  const start = source.indexOf(arrayName)
-  assert.notEqual(start, -1, `tableau ${arrayName} introuvable`)
+  const declaration = new RegExp(`\\b${arrayName}\\s*(?::[^=]+)?=\\s*\\[`).exec(source)
+  assert.ok(declaration, `déclaration du tableau ${arrayName} introuvable`)
+  const start = declaration.index
   const body = source.slice(start, source.indexOf(']', start))
   return [...body.matchAll(/'(#[0-9A-Fa-f]{6})'/g)].map(m => m[1].toUpperCase())
 }

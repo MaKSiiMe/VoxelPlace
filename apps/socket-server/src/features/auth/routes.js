@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { unlockBaseNodes } from '../unlocks/engine.js'
 import { checkRateLimit } from './rate-limit.js'
+import { anonymizePixelOwner } from '../canvas/grid.js'
 import { logger } from '../../shared/logger.js'
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '10', 10)
@@ -40,7 +41,7 @@ function checkCsrf(req, reply) {
   return true
 }
 
-export async function authRoutes(fastify, { pool, jwtSecret }) {
+export async function authRoutes(fastify, { pool, redis, jwtSecret, onAccountDeleted }) {
   // POST /api/auth/register
   fastify.post('/api/auth/register', async (req, reply) => {
     if (!checkCsrf(req, reply)) return
@@ -181,6 +182,11 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         await client.query('DELETE FROM user_color_counts WHERE LOWER(username) = LOWER($1)', [user.username])
         await client.query('DELETE FROM pixel_messages    WHERE LOWER(username) = LOWER($1)', [user.username])
         await client.query('DELETE FROM reports           WHERE LOWER(reporter) = LOWER($1)', [user.username])
+        // Les pixels restent sur le canvas, mais sans auteur. Ils conservaient
+        // jusqu'ici le pseudo : le compte supprimé restait premier du
+        // classement public, avec rang, nombre de pixels et dates d'activité.
+        await client.query('UPDATE pixel_history SET username = NULL WHERE LOWER(username) = LOWER($1)', [user.username])
+        await client.query('UPDATE shared_zones  SET created_by = NULL WHERE LOWER(created_by) = LOWER($1)', [user.username])
         await client.query('DELETE FROM users             WHERE id = $1', [payload.id])
         await client.query('COMMIT')
       } catch (err) {
@@ -190,8 +196,20 @@ export async function authRoutes(fastify, { pool, jwtSecret }) {
         client.release()
       }
 
-      // Note : pixel_history est conservé (données anonymisées — intérêt légitime gameplay)
-      // Les pixels posés restent sur le canvas mais sans lien au compte supprimé.
+      // Même chose côté Redis, où chaque pixel porte le pseudo de son auteur
+      // (survol, /api/pixel/:x/:y). Hors transaction : PostgreSQL fait foi
+      // pour le compte. Un échec ici est journalisé avec le pseudo, pour
+      // qu'un administrateur puisse relancer anonymizePixelOwner, idempotente.
+      if (redis) {
+        try {
+          await anonymizePixelOwner(redis, user.username)
+        } catch (err) {
+          logger.error({ err: err.message, username: user.username }, 'auth:delete-account — anonymisation Redis incomplète')
+        }
+      }
+
+      // Révocation côté temps réel : cache de rôle, socket ouvert
+      onAccountDeleted?.(user.username)
 
       reply.send({ ok: true, message: 'Compte et données personnelles supprimés' })
     } catch (err) {

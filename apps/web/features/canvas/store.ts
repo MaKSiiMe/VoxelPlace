@@ -2,9 +2,17 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { socket } from '@features/realtime/socket'
 import { ROLE_COOLDOWNS, type UserRole } from '@voxelplace/types'
+import { notify } from '@features/notifications/store'
+import { placementRejectedNotification } from '@features/notifications/socketEvents'
 
 export type { UserRole }
 export { ROLE_COOLDOWNS }
+
+/** Noms des 16 couleurs, dans l'ordre de DEFAULT_COLORS. */
+export const COLOR_NAMES = [
+  'Blanc', 'Gris clair', 'Gris', 'Noir', 'Marron', 'Rouge', 'Orange', 'Jaune',
+  'Vert clair', 'Vert', 'Cyan', 'Bleu clair', 'Bleu', 'Violet', 'Magenta', 'Rose',
+]
 
 export const DEFAULT_COLORS = [
   '#FFFFFF', // 0  blanc
@@ -57,6 +65,8 @@ interface CanvasStore {
   gridSize: number
   selectedColor: number | null
   hoveredPixel: { x: number; y: number } | null
+  /** Pixel ouvert dans l'inspecteur, en coordonnées de grille. */
+  inspectedPixel: { x: number; y: number } | null
   cursorScreenPos: { x: number; y: number } | null
   colors: string[]
   players: Players | null
@@ -71,6 +81,7 @@ interface CanvasStore {
   setGridSize: (size: number) => void
   setSelectedColor: (colorId: number | null) => void
   setHoveredPixel: (pixel: { x: number; y: number } | null) => void
+  setInspectedPixel: (pixel: { x: number; y: number } | null) => void
   setCursorScreenPos: (pos: { x: number; y: number } | null) => void
   setColors: (colors: string[]) => void
   setPlayers: (players: Players) => void
@@ -90,6 +101,7 @@ export const useCanvasStore = create<CanvasStore>()(
     gridSize: 2048,
     selectedColor: null,
     hoveredPixel: null,
+    inspectedPixel: null,
     colors: DEFAULT_COLORS,
     players: null,
     pixelSize: 4,
@@ -108,6 +120,7 @@ export const useCanvasStore = create<CanvasStore>()(
     setGridSize: (gridSize) => set({ gridSize }),
     setSelectedColor: (selectedColor) => set({ selectedColor }),
     setHoveredPixel: (hoveredPixel) => set({ hoveredPixel }),
+    setInspectedPixel: (inspectedPixel) => set({ inspectedPixel }),
     setColors: (colors) => set({ colors }),
     setPlayers: (players) => set({ players }),
     setPixelSize: (pixelSize) => set({ pixelSize }),
@@ -148,9 +161,11 @@ export const useCanvasStore = create<CanvasStore>()(
         { x, y, colorId: selectedColor, username, source: 'web' },
         (ack: { ok?: boolean; error?: string; cooldown?: number; role?: UserRole }) => {
           if (!ack?.ok) {
-            // rollback de l'optimistic update
-            console.warn('[pixel:place] rejected:', ack?.error)
+            // Rollback de la pose optimiste, et explication au joueur : le pixel
+            // disparaissait jusqu'ici sans qu'il sache pourquoi (cooldown, ban,
+            // session expirée…).
             updatePixel(x, y, previousColor)
+            notify(placementRejectedNotification(ack?.error ?? 'Pose refusée par le serveur.'))
           }
           // Met à jour le cooldown avec la valeur réelle du serveur (en ms)
           if (typeof ack?.cooldown === 'number' && ack.cooldown > 0) {

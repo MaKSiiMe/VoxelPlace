@@ -80,6 +80,35 @@ export async function clearGrid(redis) {
 }
 
 /**
+ * Retire un pseudo des métadonnées de pixel, en conservant les couleurs.
+ *
+ * Appelé à la suppression d'un compte : les pixels restent sur le canvas mais
+ * ne doivent plus désigner leur auteur. Le hash peut compter jusqu'à GRID_SIZE²
+ * entrées : on le parcourt par curseur (HSCAN) plutôt que de tout charger d'un
+ * bloc, pour ne pas bloquer Redis. Idempotent.
+ *
+ * @returns {Promise<number>} nombre de pixels anonymisés
+ */
+export async function anonymizePixelOwner(redis, username) {
+  const target = username.toLowerCase()
+  let cursor = '0'
+  let changed = 0
+  do {
+    const [next, flat] = await redis.hscan(PIXELS_KEY, cursor, 'COUNT', 5000)
+    cursor = next
+    for (let i = 0; i < flat.length; i += 2) {
+      let meta
+      try { meta = JSON.parse(flat[i + 1]) } catch { continue }
+      if (typeof meta.username !== 'string' || meta.username.toLowerCase() !== target) continue
+      meta.username = null
+      await redis.hset(PIXELS_KEY, flat[i], JSON.stringify(meta))
+      changed++
+    }
+  } while (cursor !== '0')
+  return changed
+}
+
+/**
  * Retourne les métadonnées d'un pixel (ou null si jamais modifié).
  */
 export async function getPixelMeta(redis, x, y) {
