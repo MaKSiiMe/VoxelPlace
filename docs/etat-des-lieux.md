@@ -242,3 +242,46 @@ Par ordre de valeur :
    Java n'a aucun test.
 2. **Cooldown en mémoire** — suffisant en mono-instance, à déplacer dans Redis avant toute
    réplication de l'API.
+
+---
+
+## Le backend est très en avance sur le frontend
+
+Relevé du 11 septembre 2026 : chaque route REST et chaque événement Socket.io du serveur,
+confronté à ce que le client web et le plugin Minecraft consomment réellement. Les
+correspondances partielles ont été vérifiées une à une.
+
+**Une grande partie des fonctionnalités annoncées — dans le README comme dans le dossier
+RNCP — n'existe que côté serveur.** Elles fonctionnent et sont testées, mais aucun
+utilisateur ne peut s'en servir.
+
+### Fonctionnalités sans interface
+
+| Domaine | Côté serveur | Côté client |
+|---------|-------------|-------------|
+| **Droit à l'effacement (RGPD)** | `DELETE /api/auth/account`, transactionnel | Aucun bouton. La politique de confidentialité invite l'utilisateur à envoyer lui-même la requête HTTP |
+| **Skill tree** | 11 fonctionnalités à débloquer (heatmap, timelapse, historique de pixel, recherche, dashboard global…) | L'arbre permet de les **débloquer contre des heures de streak**, mais aucune n'a d'interface |
+| **Notifications** | `unlocks:new`, `pixel:overwritten`, `banned`, `grid:error` | Aucune n'est écoutée : un joueur banni, écrasé ou qui débloque quelque chose n'en voit rien |
+| **Signalement** | `POST /api/report` | Impossible de signaler un pixel ou un joueur |
+| **Historique de pixel** | `/api/pixel/:x/:y`, `/api/pixel/:x/:y/history` | Absent |
+| **Partage de zone** | `/api/share`, `/api/share/:id`, GIF | Absent |
+| **Chat** | Chat global, chat de zone, fils par pixel | Absent — aucune trace dans l'historique Git du frontend |
+| **Modération** | Ban/déban, file de signalements, journaux, stats admin, effacement de pixel, rôles | Le tableau de bord admin n'expose que la restauration du canvas et la promotion `hbtn_*` |
+| **Analytique** | Heatmap, timelapse global et par zone, conflits, pulse, snapshot | Absent |
+| **Profil public** | `/api/profile/:username` | Absent (la modale de stats utilise `/api/players/:username`) |
+
+### Ce qui est réellement branché
+
+Authentification, grille et temps réel (`grid:init`, `pixel:update`, `canvas:reload`,
+`players:update`), skill tree (lecture et déblocage), leaderboard, statistiques et timelapse
+personnels, restauration du canvas par l'admin. Côté Minecraft : grille, pixels, rechargement.
+
+### Conséquences
+
+- **Le droit à l'effacement n'est pas exerçable en pratique.** Exiger d'un utilisateur qu'il
+  forge une requête `DELETE` authentifiée ne satisfait pas l'obligation de faciliter l'exercice
+  des droits (RGPD, art. 12). C'est le seul point de cette liste qui n'est pas optionnel.
+- **Le skill tree vend du vide.** Des joueurs dépensent leurs heures de streak pour des
+  fonctionnalités inaccessibles.
+- **La modération est aveugle.** Personne ne peut signaler, et l'administrateur ne peut ni
+  bannir ni consulter les signalements autrement qu'en appelant l'API à la main.
