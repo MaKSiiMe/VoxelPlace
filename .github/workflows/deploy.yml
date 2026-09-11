@@ -126,7 +126,11 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             docker compose build voxelplace-api voxelplace-web
-docker compose up -d voxelplace-api voxelplace-web
+            # Tous les services, pas seulement ceux reconstruits : « up -d » ne
+            # recrée que les conteneurs dont la définition a changé, et le
+            # restreindre à l'API et au web laisserait nginx arrêté s'il ne
+            # tournait pas (premier déploiement, conteneur supprimé).
+            docker compose up -d
 
             # nginx.conf est monté depuis le dépôt. « up -d » ne recrée pas un
             # conteneur dont seul le contenu d'un fichier monté a changé : nginx

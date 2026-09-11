@@ -112,6 +112,36 @@ describe('docker-compose', () => {
 describe('pipeline CI/CD', () => {
   const workflow = read('.github/workflows/deploy.yml')
 
+  it('garde le script de déploiement dans un seul bloc YAML', () => {
+    // Une suggestion de revue acceptée a désindenté une ligne du script. Dans
+    // un bloc « script: | », une ligne moins indentée clôt le bloc : le
+    // fichier est devenu invalide, GitHub n'a lancé aucun job — ni tests, ni
+    // déploiement — et le reste du script aurait été perdu.
+    const lines   = workflow.split('\n')
+    const start   = lines.findIndex(l => /^\s*script: \|\s*$/.test(l))
+    assert.notEqual(start, -1, 'bloc « script: | » introuvable')
+    const baseIndent = lines[start].search(/\S/)
+
+    const block = []
+    for (const line of lines.slice(start + 1)) {
+      if (line.trim() === '') { block.push(line); continue }
+      if (line.search(/\S/) <= baseIndent) break
+      block.push(line)
+    }
+    const script = block.join('\n')
+    for (const expected of ['git reset --hard origin/main', 'docker compose build', 'docker image prune', 'Plugin Minecraft']) {
+      assert.ok(script.includes(expected),
+        `« ${expected} » est hors du bloc script : une ligne a probablement perdu son indentation`)
+    }
+  })
+
+  it('démarre tous les services, pas seulement ceux reconstruits', () => {
+    const script = workflow.slice(workflow.indexOf('script: |'))
+      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
+    assert.match(script, /docker compose up -d\s*$/m,
+      'restreindre « up -d » à quelques services laisse nginx arrêté s\'il ne tournait pas')
+  })
+
   it('construit le frontend, et pas seulement ses tests', () => {
     // Les tests ne type-checkent pas : sans build, une erreur TypeScript passe
     // la CI et ne casse qu'au moment du docker build, sur le serveur.
