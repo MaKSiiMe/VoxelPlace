@@ -13,6 +13,8 @@ import { viewportState, registerViewportControls, unregisterViewportControls, zo
 import { toDisplayCoords } from '../coords'
 import { shouldPlace, shouldInspect } from '../clickIntent'
 import { TouchGesture } from '../gestures'
+import { useHeatmapStore } from '@features/heatmap/store'
+import { heatRGBA, heatOverlayTransform } from '@features/heatmap/render'
 
 // ─── Palette RGBA (construite depuis DEFAULT_COLORS du store) ────────────────
 const PALETTE_RGBA: Uint8Array = (() => {
@@ -84,6 +86,7 @@ export function usePixiCanvas(
     let isSpaceDown   = false
     let unsubGrid:     () => void
     let unsubFullGrid: () => void
+    let unsubHeatmap:  () => void
     let resizeObs:    ResizeObserver
 
     async function init() {
@@ -127,6 +130,68 @@ export function usePixiCanvas(
       app.stage.addChild(gridSprite)
       centerOnOrigin(app, gridSprite)
 
+      // ── Heatmap : un voile qui assombrit la toile, puis les cases de chaleur ──
+      // Sprites frères de la grille (Pixi v8 interdit les enfants d'un Sprite),
+      // dont la transformation est recopiée à chaque image. Transparents aux
+      // clics : la pose et l'inspection continuent de viser la grille.
+      const veil = new Sprite({ texture: Texture.WHITE })
+      veil.tint      = 0x000000
+      veil.alpha     = 0.55
+      veil.visible   = false
+      veil.eventMode = 'none'
+      let heatSprite: Sprite | null = null
+      let heatData: unknown = null   // données déjà envoyées au GPU
+      let heatCell = 1
+      app.stage.addChild(veil)
+
+      const applyHeatmap = () => {
+        const { enabled, data } = useHeatmapStore.getState()
+        const show = enabled && data !== null
+        veil.visible = show
+        if (heatSprite) heatSprite.visible = show
+        if (!show || !data) return
+        if (heatSprite && data === heatData) return
+        heatData = data
+
+        const source = new BufferImageSource({
+          resource:  heatRGBA(data.counts, data.max),
+          width:     data.size,
+          height:    data.size,
+          format:    'rgba8unorm',
+          // Filtrage linéaire : des cases de 8 px lissées se lisent comme une densité, pas comme un damier
+          scaleMode: 'linear',
+          alphaMode: 'no-premultiply-alpha',
+        } as ConstructorParameters<typeof BufferImageSource>[0])
+        const texture = new Texture({ source })
+        if (heatSprite) {
+          const previous = heatSprite.texture
+          heatSprite.texture = texture
+          previous.destroy(true)
+        } else {
+          heatSprite = new Sprite({ texture })
+          heatSprite.eventMode = 'none'
+          app.stage.addChild(heatSprite)
+        }
+        heatCell = data.cell
+        heatSprite.visible = true
+      }
+      unsubHeatmap = useHeatmapStore.subscribe(applyHeatmap)
+      applyHeatmap()
+
+      const syncHeatmap = () => {
+        if (!veil.visible) return
+        const grid = { x: gridSprite.x, y: gridSprite.y, scaleX: gridSprite.scale.x, scaleY: gridSprite.scale.y }
+        const size = useCanvasStore.getState().gridSize
+        const v = heatOverlayTransform(grid, size / veil.texture.width)
+        veil.position.set(v.x, v.y)
+        veil.scale.set(v.scaleX, v.scaleY)
+        if (heatSprite) {
+          const h = heatOverlayTransform(grid, heatCell)
+          heatSprite.position.set(h.x, h.y)
+          heatSprite.scale.set(h.scaleX, h.scaleY)
+        }
+      }
+
       // ── Register navigate callback for minimap click-to-navigate ──
       const applyZoom = (factor: number, px: number, py: number) => {
         const next = zoomAround({ x: gridSprite.x, y: gridSprite.y, scale: gridSprite.scale.x }, factor, px, py)
@@ -153,6 +218,7 @@ export function usePixiCanvas(
       // ── Grid overlay — manipulé directement en DOM via data-attribute ──
       app.ticker.add(() => {
         flushGridChanges()
+        syncHeatmap()
         const scale = gridSprite.scale.x
         useCanvasStore.getState().setPixelSize(scale)
         // Mise à jour du viewport pour la minimap (sans re-render React)
@@ -403,6 +469,7 @@ export function usePixiCanvas(
         resizeObs?.disconnect()
         unsubGrid?.()
         unsubFullGrid?.()
+        unsubHeatmap?.()
         unregisterViewportControls()
       }
 
