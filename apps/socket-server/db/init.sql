@@ -122,3 +122,11 @@ CREATE TABLE IF NOT EXISTS pixel_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pixel_messages_xy ON pixel_messages (x, y);
+
+-- ── Migrations de données déjà appliquées ───────────────────────────────────
+-- Tenue par src/shared/migrations.js : une transformation des données
+-- existantes ne doit tourner qu'une fois, pas à chaque démarrage de l'API.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id         VARCHAR(100) PRIMARY KEY,
+    applied_at TIMESTAMP    NOT NULL DEFAULT NOW()
+);

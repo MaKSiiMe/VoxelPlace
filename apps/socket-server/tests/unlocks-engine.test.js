@@ -8,8 +8,9 @@ import { startTestDatabase, truncateAll } from './helpers/postgres.js'
 import {
   unlockBaseNodes, processPixelPlaced, processPixelLost,
   processPixelOverwritten, getUnlocks, checkFeatureUnlocks,
+  canUnlockNode, unlockNode, loadPlayerMetrics, evaluateCondition,
 } from '../src/features/unlocks/engine.js'
-import { TREE, BASE_COLOR_NODES, BASE_FEATURE_NODES } from '../src/features/unlocks/tree.js'
+import { TREE, BASE_COLOR_NODES, BASE_COLOR_IDS } from '../src/features/unlocks/tree.js'
 
 let db
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
@@ -34,22 +35,22 @@ const streakOf = async (username) => {
 }
 
 describe('unlockBaseNodes', { skip: skip() }, () => {
-  it('offre les 5 couleurs de base et le chat à la création du compte', async () => {
+  it('offre les 5 couleurs de base à la création du compte', async () => {
     await createUser()
     await unlockBaseNodes(db.pool, 'Alice')
 
     const unlocked = await getUnlocks(db.pool, 'Alice')
-    for (const node of [...BASE_COLOR_NODES, ...BASE_FEATURE_NODES]) {
+    for (const node of BASE_COLOR_NODES) {
       assert.ok(unlocked.has(node), `${node} doit être débloqué d'entrée`)
     }
-    assert.equal(unlocked.size, 6)
+    assert.equal(unlocked.size, 5, 'le chat, en sommeil, n\'est plus offert')
   })
 
   it('est idempotent — un second appel ne duplique rien', async () => {
     await createUser()
     await unlockBaseNodes(db.pool, 'Alice')
     await unlockBaseNodes(db.pool, 'Alice')
-    assert.equal((await getUnlocks(db.pool, 'Alice')).size, 6)
+    assert.equal((await getUnlocks(db.pool, 'Alice')).size, 5)
   })
 })
 
@@ -152,63 +153,156 @@ describe('pixels perdus et écrasés', { skip: skip() }, () => {
   })
 })
 
+// Un arbre minimal : l'arbre réel n'a, pour l'instant, aucune fonctionnalité
+// livrée — elles sont toutes « à venir » et ne se débloquent pas.
+const TEST_TREE = {
+  ...Object.fromEntries(Object.entries(TREE).filter(([, n]) => n.type === 'color')),
+  'feature:auto':   { type: 'feature', name: 'Auto',   streakCost: 0, conditions: [{ type: 'pixels_placed', min: 10 }] },
+  'feature:payant': { type: 'feature', name: 'Payant', streakCost: 3, conditions: [{ type: 'pixels_placed', min: 10 }] },
+  'feature:bientot': { type: 'feature', name: 'Bientôt', comingSoon: true, streakCost: 0, conditions: [{ type: 'pixels_placed', min: 10 }] },
+}
+
+const setStats = (username, pixels) => db.pool.query(
+  `INSERT INTO user_stats (username, pixels_placed, pixels_lost, pixels_overwritten)
+   VALUES ($1, $2, $2, $2)
+   ON CONFLICT (username) DO UPDATE SET pixels_placed = $2, pixels_lost = $2, pixels_overwritten = $2`,
+  [username, pixels]
+)
+
 describe('checkFeatureUnlocks', { skip: skip() }, () => {
   it('ne débloque rien pour un joueur qui vient de commencer', async () => {
     await createUser()
     await unlockBaseNodes(db.pool, 'Alice')
-    const before = await getUnlocks(db.pool, 'Alice')
-
-    await checkFeatureUnlocks(db.pool, 'Alice')
-    assert.equal((await getUnlocks(db.pool, 'Alice')).size, before.size)
+    assert.deepEqual(await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE), [])
+    assert.equal((await getUnlocks(db.pool, 'Alice')).size, 5)
   })
 
   it('débloque une feature dès que sa condition de pixels posés est atteinte', async () => {
     await createUser()
-    await unlockBaseNodes(db.pool, 'Alice')
+    await setStats('Alice', 10)
 
-    // Cherche une feature automatique conditionnée uniquement au nombre de pixels
-    const [nodeId, node] = Object.entries(TREE).find(([id, n]) =>
-      n.type === 'feature' && n.streakCost === 0 &&
-      n.conditions.length === 1 && n.conditions[0].type === 'pixels_placed' &&
-      !BASE_FEATURE_NODES.includes(id)
-    ) ?? []
-
-    if (!nodeId) return // aucun nœud de cette forme dans l'arbre
-
-    await db.pool.query(
-      `INSERT INTO user_stats (username, pixels_placed) VALUES ($1, $2)
-       ON CONFLICT (username) DO UPDATE SET pixels_placed = $2`,
-      ['Alice', node.conditions[0].min]
-    )
-
-    const newUnlocks = await checkFeatureUnlocks(db.pool, 'Alice')
-    assert.ok(newUnlocks.some(u => u.nodeId === nodeId), `${nodeId} aurait dû se débloquer`)
-    assert.ok((await getUnlocks(db.pool, 'Alice')).has(nodeId), 'et être persisté')
+    const newUnlocks = await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE)
+    assert.deepEqual(newUnlocks, [{ nodeId: 'feature:auto', name: 'Auto' }])
+    assert.ok((await getUnlocks(db.pool, 'Alice')).has('feature:auto'), 'et être persisté')
   })
 
   it('ne redébloque pas une feature déjà acquise', async () => {
     await createUser()
-    await unlockBaseNodes(db.pool, 'Alice')
-    await db.pool.query(
-      `INSERT INTO user_stats (username, pixels_placed, pixels_lost, pixels_overwritten)
-       VALUES ($1, 10000, 10000, 10000)`, ['Alice']
-    )
-    await checkFeatureUnlocks(db.pool, 'Alice')
-    const second = await checkFeatureUnlocks(db.pool, 'Alice')
-    assert.deepEqual(second, [], 'un second passage ne doit rien redébloquer')
+    await setStats('Alice', 10_000)
+    assert.equal((await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE)).length, 1)
+    assert.deepEqual(await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE), [], 'un second passage ne doit rien redébloquer')
   })
 
   it('ne débloque jamais automatiquement un nœud qui coûte du streak', async () => {
     await createUser()
-    await unlockBaseNodes(db.pool, 'Alice')
-    await db.pool.query(
-      `INSERT INTO user_stats (username, pixels_placed, pixels_lost, pixels_overwritten)
-       VALUES ($1, 99999, 99999, 99999)`, ['Alice']
-    )
-    const unlocks = await checkFeatureUnlocks(db.pool, 'Alice')
-    for (const { nodeId } of unlocks) {
-      assert.equal(TREE[nodeId].streakCost, 0, `${nodeId} coûte du streak et doit rester manuel`)
+    await setStats('Alice', 99_999)
+    const unlocks = await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE)
+    assert.ok(!unlocks.some(u => u.nodeId === 'feature:payant'))
+  })
+
+  it('ne débloque ni n\'annonce une fonctionnalité à venir', async () => {
+    await createUser()
+    await setStats('Alice', 99_999)
+    const unlocks = await checkFeatureUnlocks(db.pool, 'Alice', TEST_TREE)
+    assert.ok(!unlocks.some(u => u.nodeId === 'feature:bientot'), 'annoncer « Débloqué » sans rien donner vendait du vide')
+    assert.ok(!(await getUnlocks(db.pool, 'Alice')).has('feature:bientot'))
+  })
+
+  it('n\'annonce rien sur l\'arbre réel, dont aucune fonctionnalité n\'a encore d\'interface', async () => {
+    await createUser()
+    await setStats('Alice', 99_999)
+    await db.pool.query(`UPDATE user_stats SET days_played = '["a","b","c"]', zones_visited = '["1","2","3","4","5","6","7","8","9","10"]' WHERE username = 'Alice'`)
+    assert.deepEqual(await checkFeatureUnlocks(db.pool, 'Alice'), [])
+  })
+})
+
+describe('canUnlockNode / unlockNode', { skip: skip() }, () => {
+  it('refuse une fonctionnalité à venir, même conditions remplies', async () => {
+    await createUser()
+    await setStats('Alice', 99_999)
+    const res = await canUnlockNode(db.pool, 'Alice', 'feature:bientot', TEST_TREE)
+    assert.deepEqual(res, { ok: false, error: 'Bientôt disponible' })
+  })
+
+  it('refuse un identifiant hérité du prototype d\'objet', async () => {
+    await createUser()
+    for (const nodeId of ['constructor', 'toString', '__proto__']) {
+      assert.deepEqual(await canUnlockNode(db.pool, 'Alice', nodeId), { ok: false, error: 'Nœud inconnu' })
     }
+  })
+
+  it('débloque une couleur contre son coût en streak, conditions remplies', async () => {
+    await db.pool.query(`INSERT INTO users (username, password_hash, streak_hours) VALUES ('Alice', 'hash', 5)`)
+    await db.pool.query(`INSERT INTO user_color_counts (username, color_id, count) VALUES ('Alice', 5, 10), ('Alice', 7, 10)`)
+
+    const res = await unlockNode(db.pool, 'Alice', 'color:6')   // orange : 10 rouges, 10 jaunes, 2 h
+    assert.equal(res.ok, true)
+    assert.equal(await streakOf('Alice'), 3)
+    assert.ok((await getUnlocks(db.pool, 'Alice')).has('color:6'))
+  })
+
+  it('refuse une couleur dont une condition manque, sans dépenser le streak', async () => {
+    await db.pool.query(`INSERT INTO users (username, password_hash, streak_hours) VALUES ('Alice', 'hash', 5)`)
+    await db.pool.query(`INSERT INTO user_color_counts (username, color_id, count) VALUES ('Alice', 5, 10), ('Alice', 7, 9)`)
+
+    const res = await unlockNode(db.pool, 'Alice', 'color:6')
+    assert.deepEqual(res, { ok: false, error: 'Conditions non remplies' })
+    assert.equal(await streakOf('Alice'), 5)
+  })
+})
+
+describe('evaluateCondition', { skip: skip() }, () => {
+  it('donne la progression des conditions chiffrées', async () => {
+    await createUser()
+    await db.pool.query(`INSERT INTO user_color_counts (username, color_id, count) VALUES ('Alice', 5, 7)`)
+    const metrics = await loadPlayerMetrics(db.pool, 'Alice')
+
+    assert.deepEqual(await evaluateCondition({ type: 'color_count', colorId: 5, min: 10 }, metrics, new Set()),
+      { met: false, current: 7, target: 10 })
+    assert.deepEqual(await evaluateCondition({ type: 'color_count', colorId: 7, min: 10 }, metrics, new Set()),
+      { met: false, current: 0, target: 10 }, 'une couleur jamais posée compte zéro')
+    assert.deepEqual(await evaluateCondition({ type: 'color_unlocked', colorId: 13 }, metrics, new Set(['color:13'])),
+      { met: true })
+  })
+
+  it('classe le joueur d\'après pixel_history pour rank_top', async () => {
+    await createUser()
+    await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username) VALUES
+      (0, 0, 5, 'Bob'), (1, 0, 5, 'Bob'), (2, 0, 5, 'Alice')`)
+    const metrics = await loadPlayerMetrics(db.pool, 'Alice')
+    assert.deepEqual(await evaluateCondition({ type: 'rank_top', max: 1 }, metrics, new Set()),
+      { met: false, current: 2, target: 1 })
+    assert.equal((await evaluateCondition({ type: 'rank_top', max: 2 }, metrics, new Set())).met, true)
+  })
+
+  it('ne remplit jamais une condition inconnue', async () => {
+    await createUser()
+    const metrics = await loadPlayerMetrics(db.pool, 'Alice')
+    assert.deepEqual(await evaluateCondition({ type: 'inventee' }, metrics, new Set()), { met: false })
+  })
+})
+
+describe('forme de l\'arbre', () => {
+  it('ne contient plus les fonctionnalités libres ni le chat', () => {
+    for (const nodeId of ['feature:leaderboard', 'feature:stats', 'feature:minimap',
+      'feature:pixel_blame', 'feature:chat_global', 'feature:chat_pixel']) {
+      assert.ok(!(nodeId in TREE), `${nodeId} ne doit plus figurer dans l'arbre`)
+    }
+  })
+
+  it('ne référence que des nœuds et des couleurs qui existent', () => {
+    for (const [nodeId, node] of Object.entries(TREE)) {
+      for (const cond of node.conditions) {
+        if (cond.nodeId)              assert.ok(cond.nodeId in TREE, `${nodeId} dépend de ${cond.nodeId}, absent`)
+        if (cond.colorId !== undefined) assert.ok(`color:${cond.colorId}` in TREE, `${nodeId} : couleur ${cond.colorId} inconnue`)
+      }
+    }
+  })
+
+  it('couvre les 16 couleurs de la palette, dont 5 de base', () => {
+    const colorIds = Object.values(TREE).filter(n => n.type === 'color').map(n => n.colorId).sort((a, b) => a - b)
+    assert.deepEqual(colorIds, [...Array(16).keys()])
+    assert.deepEqual([...BASE_COLOR_IDS].sort((a, b) => a - b), [0, 3, 5, 7, 12])
   })
 })
 

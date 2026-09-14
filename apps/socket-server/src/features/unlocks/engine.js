@@ -6,7 +6,7 @@
 // « Alice » et « alice » y ouvriraient deux progressions distinctes. La
 // normalisation a lieu en amont, dans placePixel, à partir du pseudo du jeton.
 
-import { TREE, BASE_COLOR_NODES, BASE_FEATURE_NODES } from './tree.js'
+import { TREE, BASE_COLOR_NODES } from './tree.js'
 
 // ── Migration colonnes (idempotent, pour déploiements existants) ─────────────
 // Les tables sont créées par init.sql. Ces ALTER TABLE ajoutent les colonnes
@@ -22,8 +22,7 @@ export async function initUnlockTables(pool) {
 // ── Unlock initial à la création du compte ───────────────────────────────────
 
 export async function unlockBaseNodes(pool, username) {
-  const nodes = [...BASE_COLOR_NODES, ...BASE_FEATURE_NODES]
-  for (const nodeId of nodes) {
+  for (const nodeId of BASE_COLOR_NODES) {
     await pool.query(
       'INSERT INTO user_unlocks (username, node_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [username, nodeId]
@@ -143,128 +142,119 @@ export async function getUnlocks(pool, username) {
   return new Set(rows.map(r => r.node_id))
 }
 
-// ── Vérification des conditions ──────────────────────────────────────────────
+// ── Métriques du joueur ──────────────────────────────────────────────────────
+// Tout ce que les conditions consultent, lu en deux requêtes. Chaque condition
+// faisait auparavant sa propre requête : une vingtaine par pixel posé.
 
-async function checkConditions(pool, username, conditions, unlocked) {
-  for (const cond of conditions) {
-    switch (cond.type) {
+export async function loadPlayerMetrics(pool, username) {
+  const [colors, stats] = await Promise.all([
+    pool.query('SELECT color_id, count FROM user_color_counts WHERE username = $1', [username]),
+    pool.query(
+      `SELECT pixels_placed, pixels_lost, pixels_overwritten,
+              jsonb_array_length(days_played)   AS days_played,
+              jsonb_array_length(zones_visited) AS zones_visited
+       FROM user_stats WHERE username = $1`,
+      [username]
+    ),
+  ])
+  const row = stats.rows[0] ?? {}
 
-      case 'color_count': {
-        const { rows } = await pool.query(
-          'SELECT count FROM user_color_counts WHERE username = $1 AND color_id = $2',
-          [username, cond.colorId]
-        )
-        if (!rows[0] || rows[0].count < cond.min) return false
-        break
-      }
+  let rank = null   // promesse, partagée par les conditions qui la demandent
+  return {
+    colorCounts:       new Map(colors.rows.map(r => [r.color_id, r.count])),
+    pixelsPlaced:      row.pixels_placed      ?? 0,
+    pixelsLost:        row.pixels_lost        ?? 0,
+    pixelsOverwritten: row.pixels_overwritten ?? 0,
+    daysPlayed:        row.days_played        ?? 0,
+    zonesVisited:      row.zones_visited      ?? 0,
+    // Le rang parcourt tout pixel_history : calculé seulement si une condition le demande
+    rank: () => {
+      rank ??= pool.query(`
+        SELECT rank FROM (
+          SELECT username, RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+          FROM pixel_history WHERE username IS NOT NULL
+          GROUP BY username
+        ) r WHERE LOWER(username) = LOWER($1)
+      `, [username]).then(({ rows }) => rows[0] ? Number(rows[0].rank) : null)
+      return rank
+    },
+  }
+}
 
-      case 'color_unlocked':
-        if (!unlocked.has(`color:${cond.colorId}`)) return false
-        break
+// ── Évaluation des conditions ────────────────────────────────────────────────
 
-      case 'feature_unlocked':
-        if (!unlocked.has(cond.nodeId)) return false
-        break
+const atLeast = (current, target) => ({ met: current >= target, current, target })
 
-      case 'pixels_placed': {
-        const { rows } = await pool.query(
-          'SELECT pixels_placed FROM user_stats WHERE username = $1', [username]
-        )
-        if (!rows[0] || rows[0].pixels_placed < cond.min) return false
-        break
-      }
+/**
+ * Évalue une condition. Renvoie { met } et, pour les conditions chiffrées,
+ * la progression { current, target } — affichée telle quelle dans l'arbre.
+ */
+export async function evaluateCondition(cond, metrics, unlocked, tree = TREE) {
+  switch (cond.type) {
+    case 'color_count':        return atLeast(metrics.colorCounts.get(cond.colorId) ?? 0, cond.min)
+    case 'pixels_placed':      return atLeast(metrics.pixelsPlaced, cond.min)
+    case 'pixels_lost':        return atLeast(metrics.pixelsLost, cond.min)
+    case 'pixels_overwritten': return atLeast(metrics.pixelsOverwritten, cond.min)
+    case 'days_played':        return atLeast(metrics.daysPlayed, cond.min)
+    case 'zones_visited':      return atLeast(metrics.zonesVisited, cond.min)
 
-      case 'pixels_lost': {
-        const { rows } = await pool.query(
-          'SELECT pixels_lost FROM user_stats WHERE username = $1', [username]
-        )
-        if (!rows[0] || rows[0].pixels_lost < cond.min) return false
-        break
-      }
+    case 'color_unlocked':     return { met: unlocked.has(`color:${cond.colorId}`) }
+    case 'feature_unlocked':   return { met: unlocked.has(cond.nodeId) }
 
-      case 'pixels_overwritten': {
-        const { rows } = await pool.query(
-          'SELECT pixels_overwritten FROM user_stats WHERE username = $1', [username]
-        )
-        if (!rows[0] || rows[0].pixels_overwritten < cond.min) return false
-        break
-      }
-
-      case 'days_played': {
-        const { rows } = await pool.query(
-          `SELECT jsonb_array_length(days_played) AS count
-           FROM user_stats WHERE username = $1`, [username]
-        )
-        if (!rows[0] || rows[0].count < cond.min) return false
-        break
-      }
-
-      case 'zones_visited': {
-        const { rows } = await pool.query(
-          `SELECT jsonb_array_length(zones_visited) AS count
-           FROM user_stats WHERE username = $1`, [username]
-        )
-        if (!rows[0] || rows[0].count < cond.min) return false
-        break
-      }
-
-      case 'rank_top': {
-        const { rows } = await pool.query(`
-          SELECT rank FROM (
-            SELECT username, RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
-            FROM pixel_history WHERE username IS NOT NULL
-            GROUP BY username
-          ) r WHERE LOWER(username) = LOWER($1)
-        `, [username])
-        if (!rows[0] || rows[0].rank > cond.max) return false
-        break
-      }
-
-      case 'all_features_unlocked': {
-        const featureNodes = Object.keys(TREE)
-          .filter(k => TREE[k].type === 'feature' && k !== 'feature:profile')
-        if (!featureNodes.every(n => unlocked.has(n))) return false
-        break
-      }
-
-      case 'color_each_unlocked': {
-        // 1px de chaque couleur actuellement débloquée
-        for (const nodeId of unlocked) {
-          if (!nodeId.startsWith('color:')) continue
-          const colorId = parseInt(nodeId.split(':')[1])
-          const { rows } = await pool.query(
-            'SELECT count FROM user_color_counts WHERE username = $1 AND color_id = $2',
-            [username, colorId]
-          )
-          if (!rows[0] || rows[0].count < 1) return false
-        }
-        break
-      }
-
-      case 'color_level4_any': {
-        const level4Ids = Object.values(TREE)
-          .filter(n => n.type === 'color' && n.level === 4)
-          .map(n => `color:${n.colorId}`)
-        if (!level4Ids.some(id => unlocked.has(id))) return false
-        break
-      }
+    case 'rank_top': {
+      const rank = await metrics.rank()
+      return { met: rank !== null && rank <= cond.max, current: rank, target: cond.max }
     }
+
+    case 'all_features_unlocked': {
+      const features = Object.keys(tree)
+        .filter(k => tree[k].type === 'feature' && k !== 'feature:profile')
+      return atLeast(features.filter(n => unlocked.has(n)).length, features.length)
+    }
+
+    case 'color_each_unlocked': {
+      // 1 pixel de chaque couleur actuellement débloquée
+      const colorIds = [...unlocked]
+        .filter(nodeId => nodeId.startsWith('color:'))
+        .map(nodeId => parseInt(nodeId.split(':')[1], 10))
+      const used = colorIds.filter(id => (metrics.colorCounts.get(id) ?? 0) >= 1).length
+      return atLeast(used, colorIds.length)
+    }
+
+    case 'color_level4_any': {
+      const level4 = Object.keys(tree).filter(k => tree[k].type === 'color' && tree[k].level === 4)
+      return { met: level4.some(id => unlocked.has(id)) }
+    }
+
+    default:
+      // Condition inconnue : jamais remplie, plutôt qu'offerte par erreur
+      return { met: false }
+  }
+}
+
+async function checkConditions(conditions, metrics, unlocked, tree) {
+  for (const cond of conditions) {
+    if (!(await evaluateCondition(cond, metrics, unlocked, tree)).met) return false
   }
   return true
 }
 
 // ── Unlock automatique des features (appelé après chaque pixel:place) ────────
 
-export async function checkFeatureUnlocks(pool, username) {
-  const unlocked   = await getUnlocks(pool, username)
+export async function checkFeatureUnlocks(pool, username, tree = TREE) {
+  const [unlocked, metrics] = await Promise.all([
+    getUnlocks(pool, username),
+    loadPlayerMetrics(pool, username),
+  ])
   const newUnlocks = []
 
-  for (const [nodeId, node] of Object.entries(TREE)) {
+  for (const [nodeId, node] of Object.entries(tree)) {
     if (node.type !== 'feature')  continue
+    if (node.comingSoon)          continue  // rien à offrir : pas de notification creuse
     if (unlocked.has(nodeId))     continue
     if (node.streakCost > 0)      continue  // débloqué manuellement
 
-    const met = await checkConditions(pool, username, node.conditions, unlocked)
+    const met = await checkConditions(node.conditions, metrics, unlocked, tree)
     if (met) {
       await pool.query(
         'INSERT INTO user_unlocks (username, node_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -280,14 +270,16 @@ export async function checkFeatureUnlocks(pool, username) {
 
 // ── Vérifier si un nœud est débloquable ──────────────────────────────────────
 
-export async function canUnlockNode(pool, username, nodeId) {
-  const node = TREE[nodeId]
+export async function canUnlockNode(pool, username, nodeId, tree = TREE) {
+  const node = Object.hasOwn(tree, nodeId) ? tree[nodeId] : null
   if (!node) return { ok: false, error: 'Nœud inconnu' }
+  if (node.comingSoon) return { ok: false, error: 'Bientôt disponible' }
 
   const unlocked = await getUnlocks(pool, username)
   if (unlocked.has(nodeId)) return { ok: false, error: 'Déjà débloqué' }
 
-  const condsMet = await checkConditions(pool, username, node.conditions, unlocked)
+  const metrics  = await loadPlayerMetrics(pool, username)
+  const condsMet = await checkConditions(node.conditions, metrics, unlocked, tree)
   if (!condsMet) return { ok: false, error: 'Conditions non remplies' }
 
   if (node.streakCost > 0) {
@@ -305,11 +297,11 @@ export async function canUnlockNode(pool, username, nodeId) {
 
 // ── Débloquer un nœud (dépense le streak si besoin) ──────────────────────────
 
-export async function unlockNode(pool, username, nodeId) {
-  const check = await canUnlockNode(pool, username, nodeId)
+export async function unlockNode(pool, username, nodeId, tree = TREE) {
+  const check = await canUnlockNode(pool, username, nodeId, tree)
   if (!check.ok) return check
 
-  const node = TREE[nodeId]
+  const node = tree[nodeId]
 
   if (node.streakCost > 0) {
     const { rowCount } = await pool.query(

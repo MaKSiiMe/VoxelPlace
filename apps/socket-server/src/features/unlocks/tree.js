@@ -6,6 +6,15 @@
 //   name        : nom lisible
 //   streakCost  : heures de streak à dépenser (0 = automatique)
 //   conditions  : tableau de conditions à remplir
+//   comingSoon  : (features) aucune interface ne la rend encore utilisable —
+//                 le nœud reste visible mais ne peut être ni débloqué ni
+//                 annoncé, pour ne pas faire dépenser du streak dans le vide.
+//                 Chaque fonctionnalité livrée lève son marqueur.
+//
+// Les fonctionnalités libres pour tous (classement, statistiques, minimap,
+// inspecteur de pixel) ne figurent pas dans l'arbre : elles y étaient listées
+// comme déblocables sans jamais avoir été verrouillées. Le chat, en sommeil,
+// n'y figure pas non plus.
 //
 // Types de conditions :
 //   color_count        { colorId, min }   — X pixels de cette couleur posés (cumulés)
@@ -91,7 +100,7 @@ export const TREE = {
   ]},
 
   // ── Features — Placement ─────────────────────────────────────────────────────
-  'feature:highlight': { type: 'feature', name: 'Surbrillance de ses pixels', streakCost: 0, conditions: [
+  'feature:highlight': { type: 'feature', name: 'Surbrillance de ses pixels', comingSoon: true, streakCost: 0, conditions: [
     { type: 'color_count', colorId: 0,  min: 1 },
     { type: 'color_count', colorId: 3,  min: 1 },
     { type: 'color_count', colorId: 12, min: 1 },
@@ -99,69 +108,51 @@ export const TREE = {
     { type: 'color_count', colorId: 5,  min: 1 },
   ]},
 
-  // ── Features — Chat ──────────────────────────────────────────────────────────
-  'feature:chat_global': { type: 'feature', name: 'Chat global', streakCost: 0, conditions: [] },
-  'feature:chat_pixel':  { type: 'feature', name: 'Thread par pixel', streakCost: 0, conditions: [
-    { type: 'pixels_placed', min: 50 },
-  ]},
 
   // ── Features — Stats & Profil ────────────────────────────────────────────────
-  'feature:leaderboard': { type: 'feature', name: 'Leaderboard', streakCost: 0, conditions: [
-    { type: 'pixels_placed', min: 10 },
-  ]},
-  'feature:stats': { type: 'feature', name: 'Ses propres stats', streakCost: 0, conditions: [
-    { type: 'pixels_placed', min: 25 },
-  ]},
-  'feature:dashboard': { type: 'feature', name: 'Dashboard joueur', streakCost: 0, conditions: [
+  'feature:dashboard': { type: 'feature', name: 'Dashboard joueur', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_placed', min: 100 },
   ]},
-  'feature:profile': { type: 'feature', name: 'Profil public', streakCost: 0, conditions: [
+  'feature:profile': { type: 'feature', name: 'Profil public', comingSoon: true, streakCost: 0, conditions: [
     { type: 'rank_top', max: 100 },
     { type: 'all_features_unlocked' },
   ]},
 
   // ── Features — Historique & Analyse ─────────────────────────────────────────
-  'feature:pixel_blame': { type: 'feature', name: 'Pixel blame', streakCost: 0, conditions: [
-    { type: 'pixels_lost', min: 10 },
-  ]},
-  'feature:search': { type: 'feature', name: 'Recherche joueur', streakCost: 0, conditions: [
+  'feature:search': { type: 'feature', name: 'Recherche joueur', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_overwritten', min: 25 },
   ]},
-  'feature:heatmap': { type: 'feature', name: 'Heatmap', streakCost: 0, conditions: [
+  'feature:heatmap': { type: 'feature', name: 'Heatmap', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_lost', min: 50 },
   ]},
-  'feature:dashboard_global': { type: 'feature', name: 'Dashboard global', streakCost: 0, conditions: [
+  'feature:dashboard_global': { type: 'feature', name: 'Dashboard global', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_overwritten', min: 100 },
   ]},
 
   // ── Features — Zone & Partage ────────────────────────────────────────────────
-  'feature:zone_select': { type: 'feature', name: 'Sélection de zone', streakCost: 0, conditions: [
+  'feature:zone_select': { type: 'feature', name: 'Sélection de zone', comingSoon: true, streakCost: 0, conditions: [
     { type: 'color_each_unlocked' },
   ]},
-  'feature:zone_share': { type: 'feature', name: 'Partage de zone', streakCost: 5, conditions: [
+  'feature:zone_share': { type: 'feature', name: 'Partage de zone', comingSoon: true, streakCost: 5, conditions: [
     { type: 'feature_unlocked', nodeId: 'feature:zone_select' },
   ]},
-  'feature:zone_gif': { type: 'feature', name: 'GIF de zone', streakCost: 10, conditions: [
+  'feature:zone_gif': { type: 'feature', name: 'GIF de zone', comingSoon: true, streakCost: 10, conditions: [
     { type: 'feature_unlocked', nodeId: 'feature:zone_share' },
   ]},
 
   // ── Features — Timelapse ─────────────────────────────────────────────────────
-  'feature:timelapse_personal': { type: 'feature', name: 'Timelapse + GIF personnel', streakCost: 0, conditions: [
+  'feature:timelapse_personal': { type: 'feature', name: 'Timelapse + GIF personnel', comingSoon: true, streakCost: 0, conditions: [
     { type: 'feature_unlocked', nodeId: 'feature:zone_select' },
     { type: 'days_played', min: 3 },
     { type: 'pixels_lost', min: 1 },
   ]},
-  'feature:timelapse_global': { type: 'feature', name: 'Timelapse + GIF canvas global', streakCost: 0, conditions: [
+  'feature:timelapse_global': { type: 'feature', name: 'Timelapse + GIF canvas global', comingSoon: true, streakCost: 0, conditions: [
     { type: 'feature_unlocked', nodeId: 'feature:timelapse_personal' },
     { type: 'zones_visited', min: 10 },
   ]},
 
   // ── Features — Canvas & UX ───────────────────────────────────────────────────
-  'feature:minimap': { type: 'feature', name: 'Minimap', streakCost: 5, conditions: [
-    { type: 'feature_unlocked', nodeId: 'feature:zone_select' },
-    { type: 'color_level4_any' },
-  ]},
-  'feature:theme': { type: 'feature', name: 'Mode light/dark', streakCost: 0, conditions: [
+  'feature:theme': { type: 'feature', name: 'Mode light/dark', comingSoon: true, streakCost: 0, conditions: [
     { type: 'color_count', colorId: 0, min: 10 },  // 10x blanc
     { type: 'color_count', colorId: 3, min: 10 },  // 10x noir
   ]},
@@ -169,5 +160,6 @@ export const TREE = {
 
 // Couleurs de niveau 1 débloquées automatiquement à la création du compte
 export const BASE_COLOR_NODES = ['color:0', 'color:3', 'color:12', 'color:7', 'color:5']
-// Feature débloquée automatiquement à la création du compte
-export const BASE_FEATURE_NODES = ['feature:chat_global']
+
+/** Identifiants de palette des couleurs de base : toujours utilisables. */
+export const BASE_COLOR_IDS = BASE_COLOR_NODES.map(nodeId => TREE[nodeId].colorId)

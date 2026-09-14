@@ -31,6 +31,8 @@ import { registerChatEvents } from './features/chat/events.js'
 import { initPixelChatTable, registerPixelChatEvents, resetPixelThread } from './features/chat/pixelChat.js'
 import { initUnlockTables, processPixelPlaced, processPixelLost, processPixelOverwritten, checkFeatureUnlocks } from './features/unlocks/engine.js'
 import { unlockRoutes } from './features/unlocks/routes.js'
+import { createColorAccess } from './features/unlocks/color-access.js'
+import { runUnlockMigrations } from './features/unlocks/migrations.js'
 import { reportRoutes } from './features/report/routes.js'
 import { profileRoutes } from './features/profile/routes.js'
 
@@ -76,6 +78,7 @@ await authRoutes(fastify, {
   // plus bas, mais ce rappel ne s'exécute qu'au traitement d'une requête.
   onAccountDeleted: (username) => {
     cooldown.invalidate(username)
+    colorAccess.invalidate(username)
     const socketId = usernameToSocket.get(username.toLowerCase())
     if (socketId) io.sockets.sockets.get(socketId)?.disconnect(true)
   },
@@ -116,6 +119,8 @@ function broadcastPlayers() {
 // --- Cooldown de pose de pixel ---
 // Toute la logique (rôles, streak, cache, purge) vit dans features/canvas/cooldown.js
 const cooldown = createCooldownController({ pool, testUsernames: TEST_USERNAMES })
+// Couleurs débloquées par joueur, en cache — invalidé à chaque déblocage
+const colorAccess = createColorAccess({ pool })
 
 // --- Socket.io événements ---
 io.on('connection', async (socket) => {
@@ -224,13 +229,17 @@ io.on('connection', async (socket) => {
   socket.on('pixel:place', async (data, ack) => {
     try {
       const result = await placePixel(
-        { redis, pool, cooldown },
+        { redis, pool, cooldown, colorAccess },
         data,
         { verifiedUsername: socket.data.verifiedUsername, isBridge: socket.data.isBridge === true },
       )
 
       if (!result.ok) {
-        return ack?.({ error: result.error, ...(result.cooldown && { cooldown: result.cooldown }) })
+        return ack?.({
+          error: result.error,
+          ...(result.code     && { code: result.code }),
+          ...(result.cooldown && { cooldown: result.cooldown }),
+        })
       }
 
       const { pixel, prevMeta, cooldownMs } = result
@@ -290,8 +299,14 @@ io.on('connection', async (socket) => {
   })
 })
 
-await adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE })
-await unlockRoutes(fastify, { pool, JWT_SECRET })
+await adminRoutes(fastify, {
+  pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE,
+  onRoleChanged: (username) => {
+    cooldown.invalidate(username)
+    colorAccess.invalidate(username)
+  },
+})
+await unlockRoutes(fastify, { pool, JWT_SECRET, colorAccess })
 await reportRoutes(fastify, { pool, JWT_SECRET })
 await profileRoutes(fastify, { pool })
 await globalDashboardRoutes(fastify, { pool })
@@ -310,6 +325,9 @@ process.on('unhandledRejection', (reason) => {
 try {
   await initPixelChatTable(pool)
   await initUnlockTables(pool)
+  // Avant l'écoute : aucun joueur existant ne doit voir une couleur refusée
+  // entre le démarrage et l'attribution de ses couleurs déjà posées.
+  await runUnlockMigrations(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
   logger.info(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
   if (!BRIDGE_TOKEN) {
