@@ -85,7 +85,7 @@ await authRoutes(fastify, {
   },
 })
 await playerRoutes(fastify, { pool })
-await timelapseRoutes(fastify, { pool })
+await timelapseRoutes(fastify, { pool, JWT_SECRET })
 await zoneRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 await shareRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 await healthRoutes(fastify, { redis, pool })
@@ -309,7 +309,7 @@ await unlockRoutes(fastify, { pool, JWT_SECRET, colorAccess })
 await reportRoutes(fastify, { pool, JWT_SECRET })
 await profileRoutes(fastify, { pool })
 await globalDashboardRoutes(fastify, { pool })
-await playerDashboardRoutes(fastify, { pool, gridSize: GRID_SIZE })
+await playerDashboardRoutes(fastify, { pool, gridSize: GRID_SIZE, JWT_SECRET })
 
 // Filet de dernier recours. Node termine le process sur une promesse rejetée
 // non gérée : pour un serveur temps réel, cela déconnecte tous les joueurs et

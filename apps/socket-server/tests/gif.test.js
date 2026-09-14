@@ -21,6 +21,12 @@ import path from 'node:path'
 import { loadGrid } from '../src/features/canvas/grid.js'
 import { PALETTE_RGB } from '../src/shared/palette.js'
 import { _resetAttempts } from '../src/features/auth/rate-limit.js'
+import jwt from 'jsonwebtoken'
+import { TEST_JWT_SECRET } from './helpers/app.js'
+
+// Ces tests portent sur le moteur, pas sur les verrous (voir timelapse.test.js) :
+// un compte de l'équipe ouvre toutes les routes.
+const STAFF = { authorization: `Bearer ${jwt.sign({ username: 'Staff', role: 'superadmin' }, TEST_JWT_SECRET)}` }
 
 // ── Lecture minimale d'un GIF : dimensions, palette globale, nombre d'images ──
 function readGif(buf) {
@@ -127,6 +133,7 @@ after(async () => { await app?.close(); await db?.cleanup() })
 beforeEach(async () => {
   if (db.skipped) return
   await truncateAll(db.pool)
+  await db.pool.query(`INSERT INTO users (username, password_hash, role) VALUES ('Staff', 'h', 'superadmin')`)
   _resetAttempts()
 })
 
@@ -138,7 +145,7 @@ const seed = (n, size = 2048) => db.pool.query(`
 describe('GET /api/timelapse/gif', { skip: skip() }, () => {
   it('borne l\'image à 1024 px et 100 images, avec la palette du jeu', async () => {
     await seed(214)
-    const res = await app.inject({ method: 'GET', url: '/api/timelapse/gif?scale=8' })
+    const res = await app.inject({ method: 'GET', url: '/api/timelapse/gif?scale=8' , headers: STAFF })
     assert.equal(res.statusCode, 200)
     assert.equal(res.headers['content-type'], 'image/gif')
 
@@ -159,7 +166,7 @@ describe('GET /api/timelapse/gif', { skip: skip() }, () => {
       FROM generate_series(1, 100000) g`)
     let last = performance.now(), maxGap = 0
     const tick = setInterval(() => { const now = performance.now(); maxGap = Math.max(maxGap, now - last); last = now }, 5)
-    const res = await app.inject({ method: 'GET', url: '/api/timelapse/gif' })
+    const res = await app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF })
     // Un tour de minuteur avant d'arrêter la mesure : juste après un blocage, la
     // réponse se résout en micro-tâche, avant que l'intervalle ait pu constater
     // l'écart — sans cette attente, le test passait même avec un encodage bloquant.
@@ -173,8 +180,8 @@ describe('GET /api/timelapse/gif', { skip: skip() }, () => {
   it('refuse un second GIF simultané plutôt que d\'en empiler', async () => {
     await seed(2000)
     const [a, b] = await Promise.all([
-      app.inject({ method: 'GET', url: '/api/timelapse/gif' }),
-      app.inject({ method: 'GET', url: '/api/timelapse/gif' }),
+      app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF }),
+      app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF }),
     ])
     const codes = [a.statusCode, b.statusCode].sort()
     assert.deepEqual(codes, [200, 503])
@@ -183,12 +190,12 @@ describe('GET /api/timelapse/gif', { skip: skip() }, () => {
   })
 
   it('limite le nombre de GIF par adresse', async () => {
-    for (let i = 0; i < 5; i++) await app.inject({ method: 'GET', url: '/api/timelapse/gif' })
-    assert.equal((await app.inject({ method: 'GET', url: '/api/timelapse/gif' })).statusCode, 429)
+    for (let i = 0; i < 5; i++) await app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF })
+    assert.equal((await app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF })).statusCode, 429)
   })
 
   it('répond 404 sans pixel', async () => {
-    assert.equal((await app.inject({ method: 'GET', url: '/api/timelapse/gif' })).statusCode, 404)
+    assert.equal((await app.inject({ method: 'GET', url: '/api/timelapse/gif' , headers: STAFF })).statusCode, 404)
   })
 })
 
@@ -213,7 +220,7 @@ describe('GET /api/players/:username/gif', { skip: skip() }, () => {
   it('passe par le moteur borné : 1024 px au plus, même à scale=8', async () => {
     await seed(214)
     await db.pool.query(`UPDATE pixel_history SET username = 'Alice'`)
-    const res = await app.inject({ method: 'GET', url: '/api/players/Alice/gif?scale=8' })
+    const res = await app.inject({ method: 'GET', url: '/api/players/Alice/gif?scale=8' , headers: STAFF })
     assert.equal(res.statusCode, 200)
     const gif = readGif(res.rawPayload)
     assert.equal(gif.width, GIF_MAX_SIDE)
@@ -224,20 +231,20 @@ describe('GET /api/players/:username/gif', { skip: skip() }, () => {
     await seed(500)   // pseudo « p »
     await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username, source) VALUES
       (1, 1, 5, 'Alice', 'web'), (2, 2, 6, 'Alice', 'web'), (3, 3, 7, 'Alice', 'web')`)
-    const gif = readGif((await app.inject({ method: 'GET', url: '/api/players/alice/gif' })).rawPayload)
+    const gif = readGif((await app.inject({ method: 'GET', url: '/api/players/alice/gif' , headers: STAFF })).rawPayload)
     assert.equal(gif.frames, 3, 'une image par pose d\'Alice, aucune des 500 autres')
   })
 
   it('répond 404 pour un joueur sans pixel et assainit le nom du fichier', async () => {
-    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })).statusCode, 404)
+    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' , headers: STAFF })).statusCode, 404)
     await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username, source) VALUES (1, 1, 5, 'a"b', 'web')`)
-    const res = await app.inject({ method: 'GET', url: `/api/players/${encodeURIComponent('a"b')}/gif` })
+    const res = await app.inject({ method: 'GET', url: `/api/players/${encodeURIComponent('a"b')}/gif` , headers: STAFF })
     assert.equal(res.headers['content-disposition'], 'attachment; filename="voxelplace-a_b.gif"')
   })
 
   it('partage la limite de GIF par adresse', async () => {
-    for (let i = 0; i < 5; i++) await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })
-    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })).statusCode, 429)
+    for (let i = 0; i < 5; i++) await app.inject({ method: 'GET', url: '/api/players/Personne/gif' , headers: STAFF })
+    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' , headers: STAFF })).statusCode, 429)
   })
 })
 

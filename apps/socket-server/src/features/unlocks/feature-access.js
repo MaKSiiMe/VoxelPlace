@@ -11,7 +11,7 @@ import { ALL_COLORS_ROLES } from './color-access.js'
  * Vérifie que la requête vient d'un compte ayant débloqué `nodeId`.
  * Répond lui-même 401 ou 403 et renvoie null en cas de refus.
  *
- * @returns {Promise<string|null>} le pseudo autorisé
+ * @returns {Promise<{username: string, role: string}|null>} le compte autorisé
  */
 export async function requireFeature(req, reply, { pool, jwtSecret, nodeId }) {
   const auth = req.headers['authorization']
@@ -32,8 +32,11 @@ export async function requireFeature(req, reply, { pool, jwtSecret, nodeId }) {
   `, [username, nodeId])
 
   const account = rows[0]
-  if (account && (account.unlocked || ALL_COLORS_ROLES.has(account.role))) return username
+  if (account && (account.unlocked || ALL_COLORS_ROLES.has(account.role))) return { username, role: account.role }
 
   reply.status(403).send({ error: 'Fonctionnalité à débloquer dans ta progression', nodeId })
   return null
 }
+
+/** L'équipe (superuser, admin, superadmin) : accès d'office, y compris aux données des autres joueurs. */
+export const isStaff = (role) => ALL_COLORS_ROLES.has(role)

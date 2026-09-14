@@ -1,12 +1,13 @@
 // ── Dashboard Joueur ─────────────────────────────────────────────────────────
 // GET /api/players/:username/dashboard  → stats complètes du joueur
-// GET /api/players/:username/timelapse  → données timelapse personnel
-// GET /api/players/:username/gif        → GIF timelapse personnel
+// GET /api/players/:username/gif        → GIF timelapse personnel (feature:timelapse_personal, son propre compte)
 
 import { parsePositiveInt } from '../../shared/query.js'
 import { allowGif, sendTimelapseGif } from '../../shared/gif/reply.js'
+import { requireFeature, isStaff } from '../unlocks/feature-access.js'
+import { periodClause } from '../timelapse/routes.js'
 
-export async function playerDashboardRoutes(fastify, { pool, gridSize }) {
+export async function playerDashboardRoutes(fastify, { pool, gridSize, JWT_SECRET }) {
 
   // Dashboard complet d'un joueur
   // GET /api/players/:username/dashboard
@@ -135,29 +136,6 @@ export async function playerDashboardRoutes(fastify, { pool, gridSize }) {
     })
   })
 
-  // Données timelapse personnel (frames JSON)
-  // GET /api/players/:username/timelapse?interval=minute
-  fastify.get('/api/players/:username/timelapse', async (req, reply) => {
-    const { username } = req.params
-    const interval = ['second', 'minute', 'hour', 'day'].includes(req.query.interval)
-      ? req.query.interval : 'minute'
-
-    const result = await pool.query(`
-      SELECT
-        date_trunc($1, placed_at) AS frame_time,
-        json_agg(
-          json_build_object('x', x, 'y', y, 'colorId', color_id)
-          ORDER BY placed_at
-        ) AS pixels
-      FROM pixel_history
-      WHERE LOWER(username) = LOWER($2)
-      GROUP BY frame_time
-      ORDER BY frame_time ASC
-    `, [interval, username])
-
-    reply.send({ username, frames: result.rows, total: result.rows.length, interval })
-  })
-
   // GIF timelapse personnel — seulement les pixels du joueur
   // GET /api/players/:username/gif?fps=10&scale=1
   // Même moteur que les autres GIF (image ≤ 1024 px, 100 images, worker thread) :
@@ -165,14 +143,21 @@ export async function playerDashboardRoutes(fastify, { pool, gridSize }) {
   // dans le thread principal, et gelait le serveur une vingtaine de secondes.
   fastify.get('/api/players/:username/gif', async (req, reply) => {
     if (!allowGif(req, reply)) return
+    const account = await requireFeature(req, reply, { pool, jwtSecret: JWT_SECRET, nodeId: 'feature:timelapse_personal' })
+    if (!account) return
     const { username } = req.params
+    // Le timelapse d'un joueur retrace où et quand il a joué : il reste le sien.
+    // L'équipe peut consulter celui des autres, pour la modération.
+    if (username.toLowerCase() !== account.username.toLowerCase() && !isStaff(account.role)) {
+      return reply.status(403).send({ error: 'Seul ton propre timelapse est accessible' })
+    }
     const fps   = parsePositiveInt(req.query.fps, 10, 30)
     const scale = parsePositiveInt(req.query.scale, 1, 8)
 
     const { rows } = await pool.query(`
       SELECT x, y, color_id AS "colorId"
       FROM pixel_history
-      WHERE LOWER(username) = LOWER($1)
+      WHERE LOWER(username) = LOWER($1) AND ${periodClause(req.query.since)}
       ORDER BY placed_at ASC
       LIMIT 50000
     `, [username])
