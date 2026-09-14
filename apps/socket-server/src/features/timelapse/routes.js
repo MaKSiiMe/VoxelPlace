@@ -2,11 +2,9 @@
 // GET /api/timelapse        → historique groupé par frames
 // GET /api/timelapse/gif    → génère et télécharge un GIF du timelapse
 
-import gifenc from 'gifenc'
-const { GIFEncoder, quantize, applyPalette } = gifenc
-import { PALETTE_RGB } from '../../shared/palette.js'
-
 import { parsePositiveInt } from '../../shared/query.js'
+import { GRID_SIZE } from '../canvas/grid.js'
+import { allowGif, sendTimelapseGif } from '../../shared/gif/reply.js'
 
 export async function timelapseRoutes(fastify, { pool }) {
 
@@ -36,12 +34,14 @@ export async function timelapseRoutes(fastify, { pool }) {
     reply.send({ frames: result.rows, total: result.rows.length, interval })
   })
 
-  // Génère et télécharge un GIF du timelapse
-  // GET /api/timelapse/gif?fps=10&scale=4&since=24h
+  // Génère et télécharge un GIF du timelapse de toute la toile
+  // GET /api/timelapse/gif?fps=10&scale=1&since=24h
   // fps   : 1-30 (défaut: 10)
-  // scale : 1-8  (défaut: 1) — taille d'un pixel en px dans le GIF
+  // scale : agrandissement demandé, borné pour que l'image reste ≤ 1024 px de côté
+  //         (la toile entière, 2048 px, est donc échantillonnée un pixel sur deux)
   // since : 1h | 24h | 7d | 30d | all (défaut: all)
   fastify.get('/api/timelapse/gif', async (req, reply) => {
+    if (!allowGif(req, reply)) return
     const fps   = parsePositiveInt(req.query.fps, 10, 30)
     const scale = parsePositiveInt(req.query.scale, 1, 8)
     const since = req.query.since
@@ -51,8 +51,7 @@ export async function timelapseRoutes(fastify, { pool }) {
       ? `WHERE placed_at > NOW() - INTERVAL '${intervals[since]}'`
       : ''
 
-    // Récupère tous les pixels dans l'ordre chronologique
-    const result = await pool.query(
+    const { rows } = await pool.query(
       `SELECT x, y, color_id AS "colorId"
        FROM pixel_history
        ${whereClause}
@@ -60,68 +59,9 @@ export async function timelapseRoutes(fastify, { pool }) {
        LIMIT 100000`
     )
 
-    if (result.rows.length === 0) {
-      return reply.status(404).send({ error: 'Aucun pixel dans cet intervalle' })
-    }
-
-    // Reconstruit le canvas frame par frame
-    // On regroupe par tranches de N pixels pour ne pas faire 100k frames
-    const PIXELS_PER_FRAME = Math.max(1, Math.floor(result.rows.length / 200))
-    const GRID_SIZE = 2048
-    const canvas = new Uint8Array(GRID_SIZE * GRID_SIZE) // colorId par pixel
-
-    const width  = GRID_SIZE * scale
-    const height = GRID_SIZE * scale
-
-    const gif = GIFEncoder()
-    const delay = Math.round(1000 / fps)
-
-    // Palette GIF (256 couleurs max) — on utilise nos 8 couleurs + noir fond
-    const gifPalette = PALETTE_RGB.map(([r, g, b]) => [r, g, b])
-    // Complète à 8 entrées minimum requis par gifenc
-    while (gifPalette.length < 8) gifPalette.push([0, 0, 0])
-
-    let frameCount = 0
-
-    for (let i = 0; i < result.rows.length; i++) {
-      const { x, y, colorId } = result.rows[i]
-      if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-        canvas[y * GRID_SIZE + x] = colorId & 0x0F
-      }
-
-      // Émet une frame tous les PIXELS_PER_FRAME pixels
-      if ((i + 1) % PIXELS_PER_FRAME === 0 || i === result.rows.length - 1) {
-        // Construit le buffer RGBA de la frame
-        const rgba = new Uint8ClampedArray(width * height * 4)
-        for (let py = 0; py < GRID_SIZE; py++) {
-          for (let px = 0; px < GRID_SIZE; px++) {
-            const [r, g, b] = PALETTE_RGB[canvas[py * GRID_SIZE + px] & 0x0F]
-            for (let sy = 0; sy < scale; sy++) {
-              for (let sx = 0; sx < scale; sx++) {
-                const idx = ((py * scale + sy) * width + (px * scale + sx)) * 4
-                rgba[idx]     = r
-                rgba[idx + 1] = g
-                rgba[idx + 2] = b
-                rgba[idx + 3] = 255
-              }
-            }
-          }
-        }
-
-        const palette = quantize(rgba, 256)
-        const index   = applyPalette(rgba, palette)
-        gif.writeFrame(index, width, height, { palette, delay })
-        frameCount++
-      }
-    }
-
-    gif.finish()
-    const buffer = gif.bytesView()
-
-    reply
-      .header('Content-Type', 'image/gif')
-      .header('Content-Disposition', `attachment; filename="voxelplace-timelapse-${Date.now()}.gif"`)
-      .header('Content-Length', buffer.length)
-      .send(Buffer.from(buffer))
+    await sendTimelapseGif(req, reply, {
+      rows, zone: { x: 0, y: 0, w: GRID_SIZE, h: GRID_SIZE }, scale, fps,
+      filename: `voxelplace-timelapse-${Date.now()}.gif`,
+    })
   })
 }
