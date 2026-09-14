@@ -14,6 +14,10 @@ import { planGif, timelapseFrames, posesFromRows, GIF_MAX_SIDE, GIF_MAX_FRAMES }
 import { renderTimelapseGif, _isBusy } from '../src/shared/gif/render.js'
 import { timelapseRoutes } from '../src/features/timelapse/routes.js'
 import { zoneRoutes } from '../src/features/zone/routes.js'
+import { playerDashboardRoutes } from '../src/features/dashboard/player.js'
+import { readdir, readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { loadGrid } from '../src/features/canvas/grid.js'
 import { PALETTE_RGB } from '../src/shared/palette.js'
 import { _resetAttempts } from '../src/features/auth/rate-limit.js'
@@ -117,7 +121,7 @@ before(async () => {
   if (db.skipped) return
   redis = new FakeRedis()
   await loadGrid(redis)
-  app = await buildTestApp([timelapseRoutes, zoneRoutes], { pool: db.pool, redis, gridSize: 2048 })
+  app = await buildTestApp([timelapseRoutes, zoneRoutes, playerDashboardRoutes], { pool: db.pool, redis, gridSize: 2048 })
 })
 after(async () => { await app?.close(); await db?.cleanup() })
 beforeEach(async () => {
@@ -202,6 +206,54 @@ describe('GET /api/zone/gif', { skip: skip() }, () => {
     const gif = readGif((await app.inject({ method: 'GET', url: '/api/zone/gif?x=0&y=0&w=32&h=16&scale=4' })).rawPayload)
     assert.equal(gif.width, 128)
     assert.equal(gif.height, 64)
+  })
+})
+
+describe('GET /api/players/:username/gif', { skip: skip() }, () => {
+  it('passe par le moteur borné : 1024 px au plus, même à scale=8', async () => {
+    await seed(214)
+    await db.pool.query(`UPDATE pixel_history SET username = 'Alice'`)
+    const res = await app.inject({ method: 'GET', url: '/api/players/Alice/gif?scale=8' })
+    assert.equal(res.statusCode, 200)
+    const gif = readGif(res.rawPayload)
+    assert.equal(gif.width, GIF_MAX_SIDE)
+    assert.equal(gif.frames, GIF_MAX_FRAMES)
+  })
+
+  it('n\'anime que les pixels du joueur, sans tenir compte de la casse', async () => {
+    await seed(500)   // pseudo « p »
+    await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username, source) VALUES
+      (1, 1, 5, 'Alice', 'web'), (2, 2, 6, 'Alice', 'web'), (3, 3, 7, 'Alice', 'web')`)
+    const gif = readGif((await app.inject({ method: 'GET', url: '/api/players/alice/gif' })).rawPayload)
+    assert.equal(gif.frames, 3, 'une image par pose d\'Alice, aucune des 500 autres')
+  })
+
+  it('répond 404 pour un joueur sans pixel et assainit le nom du fichier', async () => {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })).statusCode, 404)
+    await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username, source) VALUES (1, 1, 5, 'a"b', 'web')`)
+    const res = await app.inject({ method: 'GET', url: `/api/players/${encodeURIComponent('a"b')}/gif` })
+    assert.equal(res.headers['content-disposition'], 'attachment; filename="voxelplace-a_b.gif"')
+  })
+
+  it('partage la limite de GIF par adresse', async () => {
+    for (let i = 0; i < 5; i++) await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })
+    assert.equal((await app.inject({ method: 'GET', url: '/api/players/Personne/gif' })).statusCode, 429)
+  })
+})
+
+describe('aucune route GIF hors du moteur partagé', () => {
+  it('seul src/shared/gif importe l\'encodeur', async () => {
+    // Une quatrième route GIF, dans dashboard/player.js, avait échappé au premier
+    // correctif : elle gelait encore le serveur. Toute nouvelle route doit passer
+    // par sendTimelapseGif, qui borne la taille et encode dans un worker.
+    const src = fileURLToPath(new URL('../src', import.meta.url))
+    const offenders = []
+    for (const entry of await readdir(src, { recursive: true })) {
+      if (!entry.endsWith('.js') || entry.startsWith(`shared${path.sep}gif${path.sep}`)) continue
+      const code = await readFile(path.join(src, entry), 'utf8')
+      if (/from ['"]gifenc['"]|require\(['"]gifenc['"]\)/.test(code)) offenders.push(entry)
+    }
+    assert.deepEqual(offenders, [])
   })
 })
 
