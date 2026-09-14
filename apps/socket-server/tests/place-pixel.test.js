@@ -10,10 +10,11 @@ import { startTestDatabase, truncateAll } from './helpers/postgres.js'
 import { FakeRedis } from './helpers/redis-fake.js'
 import { placePixel, changedOwner } from '../src/features/canvas/place-pixel.js'
 import { createCooldownController } from '../src/features/canvas/cooldown.js'
+import { createColorAccess } from '../src/features/unlocks/color-access.js'
 import { loadGrid, getPixelMeta, getPixelIndex } from '../src/features/canvas/grid.js'
 import { getStats } from '../src/features/analytics/stats.js'
 
-let db, redis, cooldown, deps, clock
+let db, redis, cooldown, colorAccess, deps, clock
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
 
 function makeClock(start = 1_000_000) {
@@ -31,8 +32,9 @@ beforeEach(async () => {
   await truncateAll(db.pool)
   redis    = new FakeRedis()
   clock    = makeClock()
-  cooldown = createCooldownController({ pool: db.pool, now: clock })
-  deps     = { redis, pool: db.pool, cooldown }
+  cooldown    = createCooldownController({ pool: db.pool, now: clock })
+  colorAccess = createColorAccess({ pool: db.pool, now: clock })
+  deps        = { redis, pool: db.pool, cooldown, colorAccess }
   await loadGrid(redis)
 })
 
@@ -112,7 +114,7 @@ describe('placePixel — cas nominal', { skip: skip() }, () => {
     await placePixel(deps, webPixel(), asAlice)
     clock.advance(60_000)
 
-    const res = await placePixel(deps, webPixel({ username: 'Bob', colorId: 9 }), { verifiedUsername: 'Bob' })
+    const res = await placePixel(deps, webPixel({ username: 'Bob', colorId: 12 }), { verifiedUsername: 'Bob' })
     assert.equal(res.ok, true)
     assert.equal(res.prevMeta.username, 'Alice')
     assert.ok(changedOwner(res.prevMeta, res.pixel))
@@ -220,10 +222,51 @@ describe('placePixel — cooldown', { skip: skip() }, () => {
   it('n\'écrit rien quand la pose est refusée par le cooldown', async () => {
     await createUser('Alice')
     await placePixel(deps, webPixel(), asAlice)
-    await placePixel(deps, webPixel({ x: 11, colorId: 9 }), asAlice)
+    await placePixel(deps, webPixel({ x: 11, colorId: 12 }), asAlice)
 
     const grid = await loadGrid(redis)
     assert.equal(grid[getPixelIndex(11, 20)], 0, 'le pixel refusé ne doit pas apparaître')
+  })
+})
+
+describe('placePixel — couleurs verrouillées', { skip: skip() }, () => {
+  it('refuse une couleur non débloquée, avec un message clair', async () => {
+    await createUser('Alice')
+    const res = await placePixel(deps, webPixel({ colorId: 6 }), asAlice)
+    assert.equal(res.ok, false)
+    assert.equal(res.code, 'color_locked')
+    assert.match(res.error, /Orange est verrouillée/)
+
+    const grid = await loadGrid(redis)
+    assert.equal(grid[getPixelIndex(10, 20)], 0, 'rien n\'est écrit')
+  })
+
+  it('accepte une couleur de base', async () => {
+    await createUser('Alice')
+    assert.equal((await placePixel(deps, webPixel({ colorId: 12 }), asAlice)).ok, true)
+  })
+
+  it('accepte une couleur débloquée', async () => {
+    await createUser('Alice')
+    await db.pool.query(`INSERT INTO user_unlocks (username, node_id) VALUES ('Alice', 'color:6')`)
+    assert.equal((await placePixel(deps, webPixel({ colorId: 6 }), asAlice)).ok, true)
+  })
+
+  it('ne consomme pas le cooldown quand la couleur est refusée', async () => {
+    await createUser('Alice')
+    await placePixel(deps, webPixel({ colorId: 6 }), asAlice)
+    const res = await placePixel(deps, webPixel({ colorId: 5 }), asAlice)
+    assert.equal(res.ok, true, 'une couleur refusée ne doit pas coûter son tour au joueur')
+  })
+
+  it('laisse toutes les couleurs à un superuser', async () => {
+    await createUser('Staff', 'superuser')
+    assert.equal((await placePixel(deps, webPixel({ username: 'Staff', colorId: 6 }), { verifiedUsername: 'Staff' })).ok, true)
+  })
+
+  it('ne s\'applique pas au pont Minecraft, dont les joueurs n\'ont pas de compte', async () => {
+    const res = await placePixel(deps, webPixel({ colorId: 6, source: 'minecraft', username: 'Steve' }), { isBridge: true })
+    assert.equal(res.ok, true)
   })
 })
 

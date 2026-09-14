@@ -135,7 +135,9 @@ Source de vérité : `apps/socket-server/src/shared/palette.js`
 | 6 | Orange | `#FF8800` | 14 | Magenta | `#FF44FF` |
 | 7 | Jaune | `#FFFF00` | 15 | Rose | `#FF88AA` |
 
-Les couleurs sont débloquées progressivement via le **skill tree**.
+Un compte neuf pose 5 couleurs ; les autres se débloquent via l'**arbre de progression**,
+et le serveur refuse une couleur non débloquée. Les joueurs Minecraft, sans compte, posent
+les 16 (voir [`docs/skill-tree.md`](docs/skill-tree.md)).
 
 ---
 
@@ -156,13 +158,16 @@ Les couleurs sont débloquées progressivement via le **skill tree**.
 - Droit à l'effacement RGPD (`DELETE /api/auth/account`)
 - Rate limiting 10 req/min par IP sur les endpoints d'auth
 
-### Skill tree (27 nœuds)
-- 16 couleurs débloquées progressivement (4 niveaux de streak)
-- 11 features débloquées par des conditions de gameplay
+### Arbre de progression (28 nœuds)
+- 16 couleurs en 4 niveaux, **verrouillées côté serveur** : conditions de jeu + heures de streak dépensées
 - Niveau 1 : 5 couleurs de base offertes à la création du compte
-- Niveau 2 : mélanges primaires (2 h streak)
-- Niveau 3 : couleurs secondaires (3 h streak)
-- Niveau 4 : teintes (5 h streak + prérequis couleur)
+- Niveau 2 : mélanges primaires (2 h de streak)
+- Niveau 3 : couleurs secondaires (3 h de streak)
+- Niveau 4 : nuances (5 h de streak + couleur prérequise)
+- Superuser, admin et superadmin posent les 16 couleurs ; les comptes d'avant le verrouillage
+  ont conservé toutes celles qu'ils avaient déjà posées
+- Les joueurs Minecraft n'ont pas de compte, donc pas de progression : ils posent les 16 couleurs
+- 12 fonctionnalités « à venir », visibles mais non déblocables tant qu'elles n'ont pas d'interface
 
 ### Social
 - Chat global (éphémère en mémoire)
@@ -241,8 +246,8 @@ Les couleurs sont débloquées progressivement via le **skill tree**.
 
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| GET | `/api/unlocks` | JWT | Unlocks + streak du joueur |
-| GET | `/api/unlocks/tree` | — | Arbre complet avec statuts |
+| GET | `/api/unlocks` | JWT | Unlocks, couleurs posables et streak du joueur |
+| GET | `/api/unlocks/tree` | — | Arbre complet, couleurs posables ; connecté, progression par condition |
 | GET | `/api/unlocks/available` | JWT | Nœuds débloquables maintenant |
 | POST | `/api/unlocks/:nodeId` | JWT | Débloquer un nœud |
 
@@ -325,7 +330,7 @@ Les couleurs sont débloquées progressivement via le **skill tree**.
 npm run verify          # lint + tests backend + tests frontend + build
 ```
 
-**298 tests** — 245 côté backend (`node:test`), 53 côté frontend (Vitest).
+**575 tests** — 366 côté backend (`node:test`), 209 côté frontend (Vitest).
 
 Les tests backend tournent contre un **vrai PostgreSQL 16**, la version de
 production : un émulateur en mémoire ne sait pas exécuter les requêtes
@@ -340,15 +345,16 @@ appliqué à un buffer de 4 Mo, qu'il faut reproduire fidèlement.
 
 | Domaine | Fichiers | Tests |
 |---------|----------|-------|
-| Canvas & pose de pixel | `place-pixel`, `canvas-redis`, `canvas-routes`, `grid`, `validation` | 70 |
-| Administration & modération | `admin-routes`, `report-routes`, `report` | 54 |
-| Authentification | `auth-routes`, `auth`, `socket-auth`, `rate-limit` | 38 |
+| Canvas & pose de pixel | `place-pixel`, `canvas-redis`, `canvas-routes`, `grid`, `grid-transport`, `validation` | 83 |
+| Authentification & compte | `auth-routes`, `auth`, `socket-auth`, `rate-limit`, `account-erasure`, `player-identity` | 63 |
+| Administration & modération | `admin-routes`, `report-routes`, `report` | 63 |
+| Progression & couleurs | `unlocks-engine`, `unlocks-routes`, `unlocks-migrations`, `color-access` | 56 |
+| Déploiement & infrastructure | `deployment` | 22 |
+| Chat (en sommeil) | `chat` | 21 |
 | Zones & partage | `zone-share` | 18 |
-| Progression (skill tree) | `unlocks-engine` | 16 |
-| Cooldown | `cooldown` | 15 |
-| Déploiement & infrastructure | `deployment` | 17 |
-| Joueurs & profils | `players-profile` | 10 |
-| Synchronisation de la palette | `palette-sync` | 7 |
+| Joueurs & présence | `players-profile`, `presence` | 17 |
+| Cooldown | `cooldown` | 14 |
+| Synchronisation de la palette | `palette-sync` | 9 |
 
 Deux familles méritent une mention.
 

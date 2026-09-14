@@ -3,10 +3,8 @@
 import { useEffect, useRef } from 'react'
 import { useCanvasStore, DEFAULT_COLORS } from '../store'
 import { navigateToPixel } from '../viewportState'
-import { BORDER_COLOR } from '@features/hud/theme'
 
 const MAP_SIZE  = 256
-const MAP_DISP  = 180
 const GRID_SIZE = 2048
 
 const PALETTE_RGBA = new Uint8ClampedArray(DEFAULT_COLORS.length * 4)
@@ -77,35 +75,23 @@ export function Minimap() {
 
   function handleClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
-    const mx   = (e.clientX - rect.left) / MAP_DISP * MAP_SIZE
-    const my   = (e.clientY - rect.top)  / MAP_DISP * MAP_SIZE
+    // La taille affichée dépend du CSS : on rapporte le clic à la taille réelle
+    const mx   = (e.clientX - rect.left) / rect.width  * MAP_SIZE
+    const my   = (e.clientY - rect.top)  / rect.height * MAP_SIZE
     const gx   = Math.floor(mx * GRID_SIZE / MAP_SIZE)
     const gy   = Math.floor((MAP_SIZE - 1 - my) * GRID_SIZE / MAP_SIZE)
     navigateToPixel(gx, gy)
   }
 
   return (
-    <div
-      title="Cliquer pour naviguer"
-      style={{
-        position:     'fixed',
-        bottom:       84,
-        right:        28,
-        zIndex:       21,
-        borderRadius: 8,
-        overflow:     'hidden',
-        border:       `1px solid ${BORDER_COLOR}`,
-        boxShadow:    '0 4px 24px rgba(0,0,0,0.6)',
-        cursor:       'crosshair',
-      }}
-    >
-      <canvas
-        ref={canvasRef}
-        width={MAP_SIZE}
-        height={MAP_SIZE}
-        style={{ display: 'block', width: MAP_DISP, height: MAP_DISP, imageRendering: 'pixelated' }}
-        onClick={handleClick}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      width={MAP_SIZE}
+      height={MAP_SIZE}
+      role="img"
+      aria-label="Vue d'ensemble du canvas — cliquer pour s'y rendre"
+      className="block size-44 cursor-crosshair [image-rendering:pixelated]"
+      onClick={handleClick}
+    />
   )
 }

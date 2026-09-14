@@ -4,6 +4,7 @@ import { socket } from '@features/realtime/socket'
 import { ROLE_COOLDOWNS, type UserRole } from '@voxelplace/types'
 import { notify } from '@features/notifications/store'
 import { placementRejectedNotification } from '@features/notifications/socketEvents'
+import { useUnlocksStore } from '@features/unlocks/store'
 
 export type { UserRole }
 export { ROLE_COOLDOWNS }
@@ -147,6 +148,9 @@ export const useCanvasStore = create<CanvasStore>()(
       if (selectedColor === null) return
       if (!isEditMode) return
       if (!grid || x < 0 || x >= gridSize || y < 0 || y >= gridSize) return
+      // Couleur verrouillée : le serveur la refuserait, inutile de la faire clignoter
+      const allowed = useUnlocksStore.getState().colors
+      if (allowed && !allowed.includes(selectedColor)) return
 
       // Relevée avant la pose : la grille étant mutée en place, la relire
       // après ne rendrait plus que la couleur qu'on vient d'écrire.
@@ -159,13 +163,15 @@ export const useCanvasStore = create<CanvasStore>()(
       socket.emit(
         'pixel:place',
         { x, y, colorId: selectedColor, username, source: 'web' },
-        (ack: { ok?: boolean; error?: string; cooldown?: number; role?: UserRole }) => {
+        (ack: { ok?: boolean; error?: string; code?: string; cooldown?: number; role?: UserRole }) => {
           if (!ack?.ok) {
             // Rollback de la pose optimiste, et explication au joueur : le pixel
             // disparaissait jusqu'ici sans qu'il sache pourquoi (cooldown, ban,
             // session expirée…).
             updatePixel(x, y, previousColor)
             notify(placementRejectedNotification(ack?.error ?? 'Pose refusée par le serveur.'))
+            // La palette affichée était périmée (rôle retiré…) : on la resynchronise
+            if (ack?.code === 'color_locked') void useUnlocksStore.getState().load()
           }
           // Met à jour le cooldown avec la valeur réelle du serveur (en ms)
           if (typeof ack?.cooldown === 'number' && ack.cooldown > 0) {

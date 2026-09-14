@@ -4,6 +4,21 @@ function token() {
   return typeof window !== 'undefined' ? (localStorage.getItem('voxelplace:token') ?? '') : ''
 }
 
+/**
+ * Condition de déblocage. Pour un joueur connecté, le serveur y ajoute sa
+ * progression : `met`, et pour les conditions chiffrées `current` / `target`.
+ */
+export interface Condition {
+  type:     string
+  colorId?: number
+  nodeId?:  string
+  min?:     number
+  max?:     number
+  met?:     boolean
+  current?: number | null
+  target?:  number
+}
+
 export interface TreeNode {
   nodeId:      string
   type:        'color' | 'feature'
@@ -11,38 +26,27 @@ export interface TreeNode {
   colorId:     number | null
   name:        string
   streakCost:  number
-  conditions:  unknown[]
+  /** Aucune interface ne la rend encore utilisable : ni déblocable, ni annoncée. */
+  comingSoon:  boolean
+  conditions:  Condition[]
   unlocked:    boolean
 }
 
-export interface UnlocksData {
-  unlocked:      string[]
-  streak_hours:  number
-  last_pixel_at: string | null
+export interface TreeResponse {
+  tree:         TreeNode[]
+  /** Couleurs posables — celles d'un compte neuf pour un visiteur. */
+  colors:       number[]
+  /** null pour un visiteur. */
+  streak_hours: number | null
 }
 
-export async function fetchTree(): Promise<TreeNode[]> {
+export async function fetchTree(signal?: AbortSignal): Promise<TreeResponse> {
   const res = await fetch(`${API}/api/unlocks/tree`, {
     headers: token() ? { Authorization: `Bearer ${token()}` } : {},
+    signal,
   })
-  const data = await res.json()
-  return data.tree
-}
-
-export async function fetchUnlocks(): Promise<UnlocksData> {
-  const res = await fetch(`${API}/api/unlocks`, {
-    headers: { Authorization: `Bearer ${token()}` },
-  })
-  if (!res.ok) throw new Error('Non connecté')
+  if (!res.ok) throw new Error('Progression indisponible')
   return res.json()
-}
-
-export async function fetchAvailable(): Promise<string[]> {
-  const res = await fetch(`${API}/api/unlocks/available`, {
-    headers: { Authorization: `Bearer ${token()}` },
-  })
-  const data = await res.json()
-  return data.available
 }
 
 export async function unlockNode(nodeId: string): Promise<void> {
@@ -50,6 +54,6 @@ export async function unlockNode(nodeId: string): Promise<void> {
     method:  'POST',
     headers: { Authorization: `Bearer ${token()}` },
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? 'Erreur')
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? 'Déblocage impossible')
 }

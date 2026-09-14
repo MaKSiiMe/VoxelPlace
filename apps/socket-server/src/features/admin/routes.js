@@ -21,7 +21,7 @@ import { logger } from '../../shared/logger.js'
 
 
 
-export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE }) {
+export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE, onRoleChanged }) {
 
   // POST /api/admin/login — retourne un JWT avec role:superadmin
   fastify.post('/api/admin/login', async (req, reply) => {
@@ -61,6 +61,9 @@ export async function adminRoutes(fastify, { pool, io, usernameToSocket, JWT_SEC
     )
     if (rowCount === 0) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
+    // Le rôle fixe le cooldown et l'accès aux 16 couleurs : les caches du jeu
+    // l'appliqueraient sinon jusqu'à deux minutes plus tard.
+    onRoleChanged?.(username)
     logger.info(`[Admin] ${username} → role:${role}`)
     reply.send({ ok: true, username, role })
   })

@@ -7,18 +7,15 @@
 // Acceptable pour un déploiement mono-instance, à déplacer dans Redis le jour
 // où l'API sera répliquée.
 
-import { ROLE_COOLDOWNS } from '@voxelplace/types/roles'
+import { ROLE_COOLDOWNS, STREAK_COOLDOWNS } from '@voxelplace/types/roles'
 
 const USER_TTL_MS   = 2 * 60 * 1000
 const CLEANUP_MS    = 60_000
 const PLACED_TTL_MS = 120_000
 
-/** Réduction par streak pour les joueurs ordinaires : 0h=60s · 5h=45s · 10h=30s · 20h=20s */
+/** Réduction par streak pour les joueurs ordinaires — paliers dans @voxelplace/types. */
 export function cooldownForStreak(streakHours) {
-  if (streakHours >= 20) return 20_000
-  if (streakHours >= 10) return 30_000
-  if (streakHours >= 5)  return 45_000
-  return ROLE_COOLDOWNS.user
+  return STREAK_COOLDOWNS.find(step => streakHours >= step.minHours)?.ms ?? ROLE_COOLDOWNS.user
 }
 
 

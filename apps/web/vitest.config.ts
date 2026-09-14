@@ -12,6 +12,7 @@ export default defineConfig({
     // Par défaut en Node ; les tests de composants déclarent « @vitest-environment jsdom »
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
+    setupFiles: ['tests/setup/dialog-shim.ts'],
   },
   resolve: {
     alias: {

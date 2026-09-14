@@ -1,5 +1,5 @@
 // ── Pose d'un pixel : la décision ────────────────────────────────────────────
-// Contient toute la règle métier — validation, identité, cooldown, ban,
+// Contient toute la règle métier — validation, identité, couleur, cooldown, ban,
 // écriture — sans rien émettre. Les diffusions Socket.io restent au handler.
 //
 // Cette séparation existe pour que le cœur du jeu soit testable sans monter un
@@ -11,12 +11,13 @@ import { validatePixel } from './utils.js'
 import { incrementStats } from '../analytics/stats.js'
 import { BRIDGE_SOURCES } from '../auth/player-identity.js'
 import { logger } from '../../shared/logger.js'
+import { TREE } from '../unlocks/tree.js'
 
 
 /**
- * @returns {Promise<{ok: true, pixel, prevMeta, cooldownMs} | {ok: false, error, cooldown?}>}
+ * @returns {Promise<{ok: true, pixel, prevMeta, cooldownMs} | {ok: false, error, code?, cooldown?}>}
  */
-export async function placePixel({ redis, pool, cooldown }, data, { verifiedUsername, isBridge = false } = {}) {
+export async function placePixel({ redis, pool, cooldown, colorAccess }, data, { verifiedUsername, isBridge = false } = {}) {
   const pixel = validatePixel(data)
   if (!pixel) return { ok: false, error: 'Données invalides' }
 
@@ -57,6 +58,17 @@ export async function placePixel({ redis, pool, cooldown }, data, { verifiedUser
     // l'accepte, mais laisser passer cette casse créerait une seconde ligne de
     // progression (user_stats, user_color_counts sont indexées sur le pseudo).
     pixel.username = verifiedUsername
+
+    // Avant le cooldown : une couleur refusée ne doit pas coûter son tour au
+    // joueur. Les ponts de jeu n'ont pas de progression (voir color-access.js).
+    if (!(await colorAccess.canUse(verifiedUsername, pixel.colorId))) {
+      const name = TREE[`color:${pixel.colorId}`]?.name ?? `n° ${pixel.colorId}`
+      return {
+        ok:    false,
+        code:  'color_locked',
+        error: `La couleur ${name} est verrouillée : débloque-la dans ta progression.`,
+      }
+    }
   }
 
   // Les ponts de jeu appliquent leur propre rythme (un bloc posé à la main).

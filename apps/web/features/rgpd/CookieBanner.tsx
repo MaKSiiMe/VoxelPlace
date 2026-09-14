@@ -1,93 +1,49 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_GREEN } from '@features/hud/theme'
+import { Button } from '@shared/ui'
 
 const STORAGE_KEY = 'voxelplace:cookies-consent'
 
+/**
+ * Information sur le stockage local.
+ *
+ * Le bandeau proposait « Accepter » ou « Refuser », mais refuser ne changeait
+ * rien : le stockage local ne sert qu'à garder la session ouverte, ce que le
+ * site fait dans tous les cas. Ce stockage étant strictement nécessaire, il est
+ * exempté de consentement (CNIL) ; offrir un choix qui n'est pas respecté
+ * induisait en erreur. Il reste une information, qui ne recouvre plus la
+ * palette ni le bouton de connexion.
+ */
 export function CookieBanner() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) setVisible(true)
+    try {
+      if (!localStorage.getItem(STORAGE_KEY)) setVisible(true)
+    } catch { /* stockage indisponible : rien à mémoriser, rien à annoncer */ }
   }, [])
 
-  function accept() {
-    localStorage.setItem(STORAGE_KEY, 'accepted')
-    setVisible(false)
-  }
-
-  function decline() {
-    localStorage.setItem(STORAGE_KEY, 'declined')
+  function dismiss() {
+    try { localStorage.setItem(STORAGE_KEY, 'acknowledged') } catch { /* navigation privée stricte */ }
     setVisible(false)
   }
 
   if (!visible) return null
 
   return (
-    <div
-      role="dialog"
-      aria-modal="false"
-      aria-label="Consentement cookies"
-      style={{
-        position:     'fixed',
-        bottom:       16,
-        left:         '50%',
-        transform:    'translateX(-50%)',
-        width:        'min(640px, calc(100vw - 32px))',
-        background:   BEZEL_COLOR,
-        border:       `1px solid ${BORDER_COLOR}`,
-        borderRadius: 12,
-        padding:      '16px 20px',
-        display:      'flex',
-        alignItems:   'center',
-        gap:          16,
-        zIndex:       9999,
-        boxShadow:    '0 4px 24px rgba(0,0,0,0.6)',
-        flexWrap:     'wrap',
-      }}
+    <aside
+      aria-label="Information sur le stockage local"
+      // Sur mobile, sous la barre du haut : en bas, il recouvrait la palette dès
+      // qu'elle s'agrandit (conditions d'une couleur verrouillée, cooldown).
+      className="fixed inset-x-3 top-[72px] z-50 flex flex-col gap-3 rounded-panel bg-surface p-4 shadow-float md:inset-x-auto md:top-auto md:bottom-3 md:left-3 md:max-w-sm"
     >
-      <p style={{ color: '#c0caf5', fontSize: 13, margin: 0, flex: 1, minWidth: 200 }}>
-        Ce site utilise le stockage local (localStorage) uniquement pour mémoriser
-        votre session et vos préférences. Aucun cookie tiers ni traceur publicitaire.{' '}
-        <a
-          href="/privacy"
-          style={{ color: ACCENT_BLUE, textDecoration: 'underline' }}
-        >
-          Politique de confidentialité
-        </a>
+      <p className="text-sm text-fg-muted">
+        VoxelPlace garde ta session ouverte grâce au stockage local de ton navigateur.
+        Aucun cookie tiers, aucun traceur.{' '}
+        <a href="/privacy" className="text-accent underline underline-offset-2">En savoir plus</a>
       </p>
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        <button
-          onClick={decline}
-          style={{
-            background:   'transparent',
-            border:       `1px solid ${BORDER_COLOR}`,
-            borderRadius: 6,
-            padding:      '6px 14px',
-            color:        '#a9b1d6',
-            fontSize:     13,
-            cursor:       'pointer',
-          }}
-        >
-          Refuser
-        </button>
-        <button
-          onClick={accept}
-          style={{
-            background:   ACCENT_GREEN,
-            border:       'none',
-            borderRadius: 6,
-            padding:      '6px 14px',
-            color:        '#1a1b26',
-            fontWeight:   700,
-            fontSize:     13,
-            cursor:       'pointer',
-          }}
-        >
-          Accepter
-        </button>
-      </div>
-    </div>
+      <Button size="sm" onClick={dismiss} className="self-end">Compris</Button>
+    </aside>
   )
 }

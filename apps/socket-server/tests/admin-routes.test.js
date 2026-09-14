@@ -16,6 +16,7 @@ import { _resetAttempts } from '../src/features/auth/rate-limit.js'
 const ADMIN_PASSWORD = 'mot_de_passe_admin_test'
 
 let db, app, redis, io, emitted, disconnected
+const roleChanges = []
 
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
 
@@ -55,6 +56,7 @@ before(async () => {
     pool: db.pool, redis, io,
     usernameToSocket: new Map(),
     setPixel, GRID_SIZE,
+    onRoleChanged: (username) => roleChanges.push(username),
   })
 })
 
@@ -286,6 +288,7 @@ describe('PATCH /api/admin/users/:username/role', { skip: skip() }, () => {
   beforeEach(async () => {
     if (db.skipped) return
     await db.pool.query('INSERT INTO users (username, password_hash) VALUES ($1, $2)', ['Alice', 'hash'])
+    roleChanges.length = 0
   })
 
   const setRole = (username, role) =>
@@ -303,6 +306,12 @@ describe('PATCH /api/admin/users/:username/role', { skip: skip() }, () => {
 
   it('renvoie 404 pour un utilisateur inexistant', async () => {
     assert.equal((await setRole('Fantome', 'admin')).statusCode, 404)
+    assert.deepEqual(roleChanges, [], 'aucun cache à invalider pour un compte absent')
+  })
+
+  it('prévient le jeu, dont les caches de cooldown et de couleurs dépendent du rôle', async () => {
+    await setRole('Alice', 'superuser')
+    assert.deepEqual(roleChanges, ['Alice'])
   })
 })
 

@@ -173,7 +173,8 @@ export async function truncateAll(pool) {
   await waitForIdlePool(pool)
   await pool.query(`
     TRUNCATE users, pixel_history, shared_zones, bans, moderation_logs,
-             reports, user_stats, user_color_counts, user_unlocks, pixel_messages
+             reports, user_stats, user_color_counts, user_unlocks, pixel_messages,
+             schema_migrations
     RESTART IDENTITY CASCADE
   `)
 }

@@ -8,9 +8,7 @@ import { submitPixelReport } from '@features/report/api'
 import { useAuthStore } from '@features/auth/store'
 import { notify } from '@features/notifications/store'
 import { relativeTime } from '@shared/relativeTime'
-import {
-  BEZEL_COLOR, BORDER_COLOR, ACCENT_BLUE, ACCENT_RED, MUTED_TEXT, TEXT_COLOR, TASKBAR, THIN,
-} from '@features/hud/theme'
+import { Button, CloseIcon } from '@shared/ui'
 
 const HISTORY_SHOWN = 10
 
@@ -31,10 +29,11 @@ function Swatch({ colorId, size = 14 }: { colorId: number; size?: number }) {
   return (
     <span
       aria-hidden="true"
+      className="inline-block shrink-0 rounded-[4px]"
       style={{
-        display: 'inline-block', width: size, height: size, flexShrink: 0,
-        background: DEFAULT_COLORS[colorId] ?? DEFAULT_COLORS[0],
-        border: `1px solid ${BORDER_COLOR}`, borderRadius: 3,
+        width: size, height: size,
+        backgroundColor: DEFAULT_COLORS[colorId] ?? DEFAULT_COLORS[0],
+        boxShadow: 'inset 0 0 0 1px rgb(255 255 255 / 0.14)',
       }}
     />
   )
@@ -88,49 +87,29 @@ export function PixelInspector() {
   return (
     <aside
       aria-labelledby={titleId}
-      style={{
-        position:      'fixed',
-        top:           THIN + 48,
-        left:          TASKBAR + 16,
-        zIndex:        35,
-        width:         'min(300px, calc(100vw - 120px))',
-        maxHeight:     'calc(100vh - 160px)',
-        overflowY:     'auto',
-        background:    BEZEL_COLOR,
-        border:        `1px solid ${BORDER_COLOR}`,
-        borderRadius:  10,
-        padding:       16,
-        boxShadow:     '0 4px 24px rgba(0,0,0,0.6)',
-        display:       'flex',
-        flexDirection: 'column',
-        gap:           14,
-        fontFamily:    'monospace',
-      }}
+      // Mobile : au-dessus de la palette, pleine largeur. Grand écran : à côté de la barre d'outils.
+      className="fixed inset-x-3 bottom-[140px] z-[35] flex max-h-[45dvh] flex-col gap-4 overflow-y-auto rounded-panel bg-surface p-4 shadow-float md:inset-x-auto md:bottom-auto md:left-20 md:top-20 md:max-h-[calc(100dvh-180px)] md:w-[300px]"
     >
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h2 id={titleId} style={{ margin: 0, color: ACCENT_BLUE, fontSize: 13, fontWeight: 700 }}>
-          Pixel <span style={{ color: TEXT_COLOR, fontWeight: 400 }}>{formatDisplayCoords(pixel.x, pixel.y)}</span>
+      <header className="flex items-center justify-between gap-2">
+        <h2 id={titleId} className="text-sm font-semibold text-fg">
+          Pixel <span className="ml-1 font-mono text-xs font-normal text-fg-muted">{formatDisplayCoords(pixel.x, pixel.y)}</span>
         </h2>
         <button
           type="button"
           onClick={close}
           aria-label="Fermer l'inspecteur"
-          style={{ background: 'transparent', border: 'none', color: MUTED_TEXT, cursor: 'pointer', fontSize: 14, padding: 0 }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = ACCENT_RED)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = MUTED_TEXT)}
+          className="-m-1 rounded-md p-1 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          ✕
+          <span aria-hidden="true" className="inline-flex [&>svg]:size-4"><CloseIcon /></span>
         </button>
       </header>
 
       {state.status === 'loading' && (
-        <p role="status" style={{ margin: 0, color: MUTED_TEXT, fontSize: 12 }}>Chargement…</p>
+        <p role="status" className="text-sm text-fg-muted">Chargement…</p>
       )}
 
       {state.status === 'error' && (
-        <p role="alert" style={{ margin: 0, color: ACCENT_RED, fontSize: 12 }}>
-          Impossible de charger ce pixel.
-        </p>
+        <p role="alert" className="text-sm text-danger">Impossible de charger ce pixel.</p>
       )}
 
       {state.status === 'ready' && (
@@ -147,11 +126,11 @@ export function PixelInspector() {
 function PixelSummary({ info }: { info: PixelInfo }) {
   const neverPlaced = !info.source
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <Swatch colorId={info.colorId} size={28} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ color: TEXT_COLOR, fontSize: 13 }}>{COLOR_NAMES[info.colorId] ?? 'Inconnue'}</span>
-        <span style={{ color: MUTED_TEXT, fontSize: 11 }}>
+    <div className="flex items-center gap-3">
+      <Swatch colorId={info.colorId} size={32} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-fg">{COLOR_NAMES[info.colorId] ?? 'Inconnue'}</span>
+        <span className="text-xs text-fg-muted">
           {neverPlaced
             ? 'Jamais modifié'
             : <>Par {authorLabel(info.username, info.source)}
@@ -169,17 +148,17 @@ function PixelHistory({ history }: { history: PixelHistoryEntry[] }) {
   const shown = history.slice(0, HISTORY_SHOWN)
   return (
     <section aria-label="Historique du pixel">
-      <h3 style={{ margin: '0 0 8px', color: MUTED_TEXT, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-subtle">
         Historique · {history.length}{history.length >= 50 ? '+' : ''}
       </h3>
-      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <ol className="flex flex-col gap-1.5">
         {shown.map((h, i) => (
-          <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+          <li key={i} className="flex items-center gap-2 text-xs">
             <Swatch colorId={h.colorId} />
-            <span style={{ color: TEXT_COLOR, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span className="min-w-0 flex-1 truncate text-fg">
               {authorLabel(h.username, h.source)}
             </span>
-            <time dateTime={h.placedAt} style={{ color: MUTED_TEXT, flexShrink: 0 }}>{relativeTime(h.placedAt)}</time>
+            <time dateTime={h.placedAt} className="shrink-0 text-fg-subtle">{relativeTime(h.placedAt)}</time>
           </li>
         ))}
       </ol>
@@ -210,7 +189,7 @@ function ReportForm({ x, y }: { x: number; y: number }) {
   }
 
   if (done) {
-    return <p style={{ margin: 0, color: MUTED_TEXT, fontSize: 11 }}>Pixel signalé.</p>
+    return <p className="text-xs text-fg-muted">Pixel signalé.</p>
   }
 
   if (!open) {
@@ -218,12 +197,7 @@ function ReportForm({ x, y }: { x: number; y: number }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        style={{
-          alignSelf: 'flex-start', background: 'transparent', border: 'none', padding: 0,
-          color: MUTED_TEXT, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = ACCENT_RED)}
-        onMouseLeave={(e) => (e.currentTarget.style.color = MUTED_TEXT)}
+        className="self-start text-xs text-fg-subtle underline underline-offset-4 transition-colors hover:text-danger"
       >
         Signaler ce pixel
       </button>
@@ -231,38 +205,28 @@ function ReportForm({ x, y }: { x: number; y: number }) {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: `1px solid ${BORDER_COLOR}`, paddingTop: 12 }}>
-      <fieldset aria-labelledby={legendId} style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <legend id={legendId} style={{ color: TEXT_COLOR, fontSize: 12, marginBottom: 4 }}>Pourquoi signaler ce pixel ?</legend>
+    <form onSubmit={submit} className="flex flex-col gap-3 border-t border-line pt-3">
+      <fieldset aria-labelledby={legendId} className="flex flex-col gap-2">
+        <legend id={legendId} className="mb-1 text-sm text-fg">Pourquoi signaler ce pixel ?</legend>
         {REPORT_REASONS.map((r) => (
-          <label key={r.value} style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT_COLOR, fontSize: 12, cursor: 'pointer' }}>
+          <label key={r.value} className="flex cursor-pointer items-center gap-2 text-sm text-fg">
             <input
               type="radio"
               name={`raison-${legendId}`}
               value={r.value}
               checked={reason === r.value}
               onChange={() => setReason(r.value)}
-              style={{ accentColor: ACCENT_RED }}
+              className="accent-danger"
             />
             {r.label}
           </label>
         ))}
       </fieldset>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          style={{ flex: 1, padding: '6px 0', background: 'transparent', border: `1px solid ${BORDER_COLOR}`, borderRadius: 6, color: TEXT_COLOR, fontSize: 11, cursor: 'pointer' }}
-        >
-          Annuler
-        </button>
-        <button
-          type="submit"
-          disabled={pending}
-          style={{ flex: 1, padding: '6px 0', background: 'transparent', border: `1px solid ${ACCENT_RED}`, borderRadius: 6, color: ACCENT_RED, fontSize: 11, fontWeight: 700, cursor: pending ? 'wait' : 'pointer' }}
-        >
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => setOpen(false)} className="flex-1">Annuler</Button>
+        <Button size="sm" type="submit" variant="danger-ghost" disabled={pending} className="flex-1 border border-danger/40">
           {pending ? 'Envoi…' : 'Signaler'}
-        </button>
+        </Button>
       </div>
     </form>
   )
