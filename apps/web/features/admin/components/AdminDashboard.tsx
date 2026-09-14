@@ -1,156 +1,119 @@
 'use client'
 
-import { useState } from 'react'
-import { API_URL as API } from '@shared/api'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { Button, cn } from '@shared/ui'
+import { adminApi } from '../api'
+import { useAdminQuery } from '../hooks/useAdminQuery'
+import type { AdminSession } from '../session'
+import { CanvasSection } from './CanvasSection'
+import { LogsSection } from './LogsSection'
+import { PlayersSection } from './PlayersSection'
+import { ReportsSection } from './ReportsSection'
+import { StatsSection } from './StatsSection'
+import { RoleBadge } from './ui'
 
-const BEZEL_COLOR  = '#24283b'
-const BORDER_COLOR = '#414868'
-const ACCENT_BLUE  = '#7aa2f7'
-const ACCENT_GREEN = '#9ece6a'
-const ACCENT_RED   = '#f7768e'
-const ACCENT_YELLOW = '#e0af68'
+export type AdminTab = 'signalements' | 'joueurs' | 'toile' | 'journal' | 'statistiques'
 
-function getToken() {
-  return typeof window !== 'undefined' ? localStorage.getItem('voxelplace:token') ?? '' : ''
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: 'signalements', label: 'Signalements' },
+  { id: 'joueurs',      label: 'Joueurs' },
+  { id: 'toile',        label: 'Toile' },
+  { id: 'journal',      label: 'Journal' },
+  { id: 'statistiques', label: 'Statistiques' },
+]
+
+const isTab = (value: string): value is AdminTab => TABS.some((t) => t.id === value)
+
+interface Props {
+  session:  AdminSession
+  onLogout: () => void
 }
 
-export function AdminDashboard() {
-  const [restoreResult,  setRestoreResult]  = useState<string | null>(null)
-  const [restoreLoading, setRestoreLoading] = useState(false)
+/**
+ * Tableau de bord de modération. Il n'exposait que la restauration du canvas :
+ * signalements, bannissements, rôles et journaux n'étaient accessibles qu'en
+ * appelant l'API à la main.
+ */
+export function AdminDashboard({ session, onLogout }: Props) {
+  const [tab, setTab] = useState<AdminTab>('signalements')
+  const tabRefs = useRef<Partial<Record<AdminTab, HTMLButtonElement | null>>>({})
+  const baseId  = useId()
+  const pending = useAdminQuery((signal) => adminApi.reports('pending', signal), [])
+  const pendingCount = pending.state.data?.length ?? 0
 
-  async function handleRestoreCanvas() {
-    if (!confirm('Restaurer le canvas depuis PostgreSQL ? Les pixels Redis seront remplacés.')) return
-    setRestoreLoading(true)
-    setRestoreResult(null)
-    try {
-      const res = await fetch(`${API}/api/admin/restore-canvas`, {
-        method:  'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erreur serveur')
-      setRestoreResult(`✅ ${data.restored} pixels restaurés depuis PostgreSQL`)
-    } catch (err: unknown) {
-      setRestoreResult(`❌ ${err instanceof Error ? err.message : 'Erreur inconnue'}`)
-    } finally {
-      setRestoreLoading(false)
-    }
+  // L'onglet vit dans l'ancre (#joueurs) : un rechargement ou un lien partagé y ramène
+  useEffect(() => {
+    const fromHash = window.location.hash.slice(1)
+    if (isTab(fromHash)) setTab(fromHash)
+  }, [])
+  function select(next: AdminTab, focus = false) {
+    setTab(next)
+    history.replaceState(null, '', `#${next}`)
+    if (focus) tabRefs.current[next]?.focus()
   }
-
-  const cardStyle: React.CSSProperties = {
-    background:   BEZEL_COLOR,
-    border:       `1px solid ${BORDER_COLOR}`,
-    borderRadius: 12,
-    padding:      24,
-    display:      'flex',
-    flexDirection: 'column',
-    gap:          16,
+  function onTabKey(e: KeyboardEvent) {
+    const i = TABS.findIndex((t) => t.id === tab)
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
+    e.preventDefault()
+    select(TABS[(i + step + TABS.length) % TABS.length].id, true)
   }
-
-  const btnStyle = (color: string, disabled?: boolean): React.CSSProperties => ({
-    padding:      '10px 20px',
-    background:   disabled ? BORDER_COLOR : `${color}22`,
-    border:       `1px solid ${disabled ? BORDER_COLOR : color}`,
-    borderRadius: 6,
-    color:        disabled ? '#1a1b26' : color,
-    fontSize:     13,
-    fontWeight:   600,
-    cursor:       disabled ? 'not-allowed' : 'pointer',
-    alignSelf:    'flex-start',
-  })
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <span style={{ color: ACCENT_BLUE, fontWeight: 700, fontSize: 20, fontFamily: 'monospace' }}>
-            VoxelPlace
-          </span>
-          <span style={{ color: BORDER_COLOR, fontSize: 20, fontFamily: 'monospace' }}> / Dashboard</span>
+    <div className="min-h-dvh bg-bg">
+      <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+          <p className="text-sm font-semibold text-fg">
+            VoxelPlace <span className="font-normal text-fg-subtle">· Modération</span>
+          </p>
+          <div className="ml-auto flex items-center gap-2 text-sm">
+            <span className="hidden text-fg-muted sm:inline">{session.username ?? 'Mot de passe admin'}</span>
+            <RoleBadge role={session.role} />
+            <a href="/" className="ml-1 inline-flex h-8 items-center whitespace-nowrap rounded-control px-2.5 text-xs font-medium text-fg-muted hover:bg-surface-2 hover:text-fg">
+              Retour à la toile
+            </a>
+            {!session.username && <Button size="sm" variant="ghost" className="whitespace-nowrap px-2.5" onClick={onLogout}>Se déconnecter</Button>}
+          </div>
         </div>
-        <a
-          href="/"
-          style={{
-            color:          BORDER_COLOR,
-            fontSize:       13,
-            textDecoration: 'none',
-            border:         `1px solid ${BORDER_COLOR}`,
-            borderRadius:   6,
-            padding:        '6px 14px',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = ACCENT_BLUE; (e.currentTarget as HTMLElement).style.borderColor = ACCENT_BLUE }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BORDER_COLOR; (e.currentTarget as HTMLElement).style.borderColor = BORDER_COLOR }}
-        >
-          ← Retour au canvas
-        </a>
-      </div>
-
-      {/* Section — Canvas */}
-      <div style={cardStyle}>
-        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-          <span style={{ color:'#c0caf5', fontWeight:700, fontSize:15 }}>Canvas Redis</span>
-          <span style={{ color:BORDER_COLOR, fontSize:13 }}>
-            Si le canvas est vide ou corrompu, reconstruit l'état depuis <code style={{ color:ACCENT_BLUE }}>pixel_history</code> (PostgreSQL).
-          </span>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-          <button
-            style={btnStyle(ACCENT_RED, restoreLoading)}
-            disabled={restoreLoading}
-            onClick={handleRestoreCanvas}
-            onMouseEnter={e => { if (!restoreLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_RED}44` }}
-            onMouseLeave={e => { if (!restoreLoading) (e.currentTarget as HTMLElement).style.background = `${ACCENT_RED}22` }}
-          >
-            {restoreLoading ? 'Restauration…' : '🔄 Restaurer le canvas depuis PostgreSQL'}
-          </button>
-          {restoreResult && (
-            <span style={{ color: restoreResult.startsWith('✅') ? ACCENT_GREEN : ACCENT_RED, fontSize:13, fontFamily:'monospace' }}>
-              {restoreResult}
-            </span>
-          )}
-        </div>
-      </div>
-
-
-      {/* Section — Rôles et cooldowns */}
-      <div style={cardStyle}>
-        <span style={{ color: '#c0caf5', fontWeight: 700, fontSize: 15 }}>Rôles & cooldowns</span>
-        <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr>
-              {['Rôle', 'Cooldown', 'Obtention'].map(h => (
-                <th key={h} style={{ textAlign: 'left', color: BORDER_COLOR, fontWeight: 600, padding: '4px 16px 8px 0', fontSize: 11, letterSpacing: '0.08em', fontFamily: 'monospace' }}>
-                  {h.toUpperCase()}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              { role: 'user',       color: BORDER_COLOR,  cd: '60s',  how: 'Compte standard' },
-              { role: 'superuser',  color: ACCENT_YELLOW, cd: '0s',   how: 'Attribution manuelle' },
-              { role: 'admin',      color: ACCENT_BLUE,   cd: '0s',   how: 'Attribution manuelle' },
-              { role: 'superadmin', color: ACCENT_RED,    cd: '0s',   how: 'Mot de passe admin' },
-            ].map(({ role, color, cd, how }) => (
-              <tr key={role}>
-                <td style={{ padding: '5px 16px 5px 0' }}>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`,
-                    borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace',
-                  }}>
-                    {role.toUpperCase()}
+        <div className="mx-auto max-w-6xl overflow-x-auto px-4">
+          <div role="tablist" aria-label="Sections de modération" className="flex gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                ref={(el) => { tabRefs.current[t.id] = el }}
+                type="button"
+                role="tab"
+                id={`${baseId}-tab-${t.id}`}
+                aria-selected={tab === t.id}
+                aria-controls={`${baseId}-panel`}
+                tabIndex={tab === t.id ? 0 : -1}
+                onClick={() => select(t.id)}
+                onKeyDown={onTabKey}
+                className={cn(
+                  'relative flex h-10 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors',
+                  tab === t.id ? 'text-fg after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent' : 'text-fg-muted hover:text-fg',
+                )}
+              >
+                {t.label}
+                {t.id === 'signalements' && pendingCount > 0 && (
+                  <span className="rounded-full bg-warning/20 px-1.5 text-[11px] font-semibold tabular-nums text-warning">
+                    {pendingCount}<span className="sr-only"> à traiter</span>
                   </span>
-                </td>
-                <td style={{ padding: '5px 16px 5px 0', color: ACCENT_GREEN, fontFamily: 'monospace' }}>{cd}</td>
-                <td style={{ padding: '5px 0', color: BORDER_COLOR }}>{how}</td>
-              </tr>
+                )}
+              </button>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      </header>
 
+      <main id={`${baseId}-panel`} role="tabpanel" aria-labelledby={`${baseId}-tab-${tab}`} className="mx-auto max-w-6xl px-4 py-6">
+        <h1 className="sr-only">Modération VoxelPlace</h1>
+        {tab === 'signalements' && <ReportsSection onChanged={pending.reload} />}
+        {tab === 'joueurs'      && <PlayersSection session={session} />}
+        {tab === 'toile'        && <CanvasSection session={session} />}
+        {tab === 'journal'      && <LogsSection />}
+        {tab === 'statistiques' && <StatsSection />}
+      </main>
     </div>
   )
 }

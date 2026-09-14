@@ -38,13 +38,13 @@ function fakeIo() {
   }
 }
 
-const token = (role) => jwt.sign({ role }, TEST_JWT_SECRET, { expiresIn: '1h' })
+const token = (role, username) => jwt.sign({ role, ...(username && { username }) }, TEST_JWT_SECRET, { expiresIn: '1h' })
 
 // Volontairement sans content-type : plusieurs routes admin n'ont pas de corps,
 // et annoncer application/json sans en envoyer fait répondre 400 à Fastify.
 // Le front n'envoie pas non plus de content-type sur ces appels ; inject()
 // ajoute celui qu'il faut dès qu'un payload est fourni.
-const auth  = (role) => ({ authorization: `Bearer ${token(role)}` })
+const auth  = (role, username) => ({ authorization: `Bearer ${token(role, username)}` })
 
 before(async () => {
   process.env.ADMIN_PASSWORD = ADMIN_PASSWORD
@@ -149,18 +149,43 @@ describe('POST /api/admin/pixel/clear', { skip: skip() }, () => {
   const clear = (body) =>
     app.inject({ method: 'POST', url: '/api/admin/pixel/clear', headers: auth('admin'), payload: body })
 
-  it('remet le pixel à blanc et journalise l\'action', async () => {
+  it('remet le pixel à blanc et journalise l\'action au nom du jeton', async () => {
     await setPixel(redis, { x: 5, y: 6, colorId: 9, username: 'Alice', source: 'web' })
 
-    const res = await clear({ x: 5, y: 6, admin: 'Maxime' })
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/pixel/clear', headers: auth('admin', 'Modo'),
+      payload: { x: 5, y: 6, admin: 'Usurpateur' },
+    })
     assert.equal(res.statusCode, 200)
+    assert.equal(res.json().previousOwner, 'Alice')
 
     const grid = await loadGrid(redis)
     assert.equal(grid[getPixelIndex(5, 6)], 0)
 
-    const { rows } = await db.pool.query(`SELECT action, admin FROM moderation_logs`)
+    const { rows } = await db.pool.query(`SELECT action, admin, target FROM moderation_logs`)
     assert.equal(rows[0].action, 'clear_pixel')
-    assert.equal(rows[0].admin,  'Maxime')
+    assert.equal(rows[0].admin,  'Modo', 'le nom vient du jeton, pas du corps de la requête')
+    assert.equal(rows[0].target, 'Alice', 'le journal dit à qui appartenait le pixel')
+  })
+
+  it('signe « [superadmin] » quand le jeton ne porte pas de pseudo', async () => {
+    await app.inject({ method: 'POST', url: '/api/admin/pixel/clear', headers: auth('superadmin'), payload: { x: 1, y: 1 } })
+    const { rows } = await db.pool.query(`SELECT admin FROM moderation_logs`)
+    assert.equal(rows[0].admin, '[superadmin]')
+  })
+
+  it('inscrit l\'effacement dans l\'historique : une restauration ne ramène pas le pixel modéré', async () => {
+    await db.pool.query(`INSERT INTO pixel_history (x, y, color_id, username, source, placed_at)
+                         VALUES (5, 6, 9, 'Alice', 'web', NOW() - INTERVAL '1 minute')`)
+    await setPixel(redis, { x: 5, y: 6, colorId: 9, username: 'Alice', source: 'web' })
+    await clear({ x: 5, y: 6 })
+
+    await app.inject({ method: 'POST', url: '/api/admin/restore-canvas', headers: auth('superadmin') })
+    const grid = await loadGrid(redis)
+    assert.equal(grid[getPixelIndex(5, 6)], 0, 'le pixel effacé ne doit pas revenir')
+
+    const { rows } = await db.pool.query(`SELECT username FROM pixel_history WHERE source = 'moderation'`)
+    assert.deepEqual(rows, [{ username: null }], 'sans pseudo : hors classements et progression')
   })
 
   it('rejette des coordonnées hors de la grille', async () => {
@@ -203,6 +228,12 @@ describe('DELETE /api/admin/canvas', { skip: skip() }, () => {
 })
 
 describe('POST /api/admin/restore-canvas', { skip: skip() }, () => {
+  it('journalise la restauration', async () => {
+    await app.inject({ method: 'POST', url: '/api/admin/restore-canvas', headers: auth('superadmin') })
+    const { rows } = await db.pool.query(`SELECT action, admin FROM moderation_logs`)
+    assert.deepEqual(rows, [{ action: 'restore_canvas', admin: '[superadmin]' }])
+  })
+
   it('reconstruit la grille depuis pixel_history', async () => {
     await db.pool.query(
       `INSERT INTO pixel_history (x,y,color_id,username,source,placed_at) VALUES
@@ -226,16 +257,56 @@ describe('bannissement', { skip: skip() }, () => {
   const unban = (username) =>
     app.inject({ method: 'DELETE', url: `/api/admin/ban/${username}`, headers: auth('admin') })
 
-  it('bannit un joueur et journalise l\'action', async () => {
-    const res = await ban('Tricheur', { reason: 'spam', banned_by: 'Maxime' })
+  it('bannit un joueur et journalise l\'action au nom du jeton', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/ban/Tricheur', headers: auth('admin', 'Modo'),
+      payload: { reason: 'spam', banned_by: 'Usurpateur' },
+    })
     assert.equal(res.statusCode, 201)
 
-    const { rows } = await db.pool.query('SELECT username, reason FROM bans')
-    assert.equal(rows[0].username, 'Tricheur')
-    assert.equal(rows[0].reason,   'spam')
+    const { rows } = await db.pool.query('SELECT username, reason, banned_by FROM bans')
+    assert.equal(rows[0].username,  'Tricheur')
+    assert.equal(rows[0].reason,    'spam')
+    assert.equal(rows[0].banned_by, 'Modo', 'banned_by ne se choisit pas dans la requête')
 
-    const logs = await db.pool.query(`SELECT action, target FROM moderation_logs WHERE action = 'ban'`)
+    const logs = await db.pool.query(`SELECT action, target, admin FROM moderation_logs WHERE action = 'ban'`)
     assert.equal(logs.rows[0].target, 'Tricheur')
+    assert.equal(logs.rows[0].admin,  'Modo')
+  })
+
+  it('refuse une durée invalide au lieu d\'échouer en 500', async () => {
+    for (const expires_in_days of ['abc', 0, -1, 1.5, 3651]) {
+      const res = await ban('Tricheur', { expires_in_days })
+      assert.equal(res.statusCode, 400, `durée ${expires_in_days}`)
+    }
+    const { rows } = await db.pool.query('SELECT count(*)::int AS n FROM bans')
+    assert.equal(rows[0].n, 0)
+  })
+
+  it('bannit sous le pseudo canonique et remplace un bannissement d\'une autre casse', async () => {
+    await db.pool.query(`INSERT INTO users (username, password_hash) VALUES ('Alice', 'hash')`)
+    await db.pool.query(`INSERT INTO bans (username, reason) VALUES ('ALICE', 'ancien')`)
+
+    await ban('alice', { reason: 'nouveau' })
+    const { rows } = await db.pool.query('SELECT username, reason FROM bans')
+    assert.deepEqual(rows, [{ username: 'Alice', reason: 'nouveau' }])
+  })
+
+  it('tronque un motif trop long au lieu d\'échouer', async () => {
+    const res = await ban('Bavard', { reason: 'x'.repeat(1000) })
+    assert.equal(res.statusCode, 201)
+    const { rows } = await db.pool.query('SELECT length(reason)::int AS n FROM bans')
+    assert.equal(rows[0].n, 256)
+  })
+
+  it('journalise le débannissement au nom du jeton, sans lire d\'en-tête', async () => {
+    await ban('Alice')
+    await app.inject({
+      method: 'DELETE', url: '/api/admin/ban/Alice',
+      headers: { ...auth('admin', 'Modo'), 'x-admin-name': 'Usurpateur' },
+    })
+    const { rows } = await db.pool.query(`SELECT admin FROM moderation_logs WHERE action = 'unban'`)
+    assert.equal(rows[0].admin, 'Modo')
   })
 
   it('pose une date d\'expiration pour un bannissement temporaire', async () => {
@@ -270,10 +341,13 @@ describe('bannissement', { skip: skip() }, () => {
     assert.equal((await unban('Inconnu')).statusCode, 404)
   })
 
-  it('liste les bannissements en cours', async () => {
+  it('liste les bannissements, en distinguant ceux qui ont expiré', async () => {
     await ban('A'); await ban('B')
-    const res = await app.inject({ method: 'GET', url: '/api/admin/bans', headers: auth('admin') })
-    assert.equal(res.json().bans.length, 2)
+    await db.pool.query(`INSERT INTO bans (username, expires_at) VALUES ('Ancien', NOW() - INTERVAL '1 day')`)
+    const { bans } = (await app.inject({ method: 'GET', url: '/api/admin/bans', headers: auth('admin') })).json()
+    assert.equal(bans.length, 3)
+    assert.equal(bans.find(b => b.username === 'Ancien').active, false)
+    assert.equal(bans.find(b => b.username === 'A').active, true)
   })
 })
 
@@ -312,6 +386,12 @@ describe('PATCH /api/admin/users/:username/role', { skip: skip() }, () => {
   it('prévient le jeu, dont les caches de cooldown et de couleurs dépendent du rôle', async () => {
     await setRole('Alice', 'superuser')
     assert.deepEqual(roleChanges, ['Alice'])
+  })
+
+  it('journalise le rôle accordé : c\'est un pouvoir donné', async () => {
+    await setRole('alice', 'superuser')
+    const { rows } = await db.pool.query(`SELECT action, target, admin, metadata FROM moderation_logs`)
+    assert.deepEqual(rows, [{ action: 'role', target: 'Alice', admin: '[superadmin]', metadata: { role: 'superuser' } }])
   })
 })
 
@@ -358,7 +438,50 @@ describe('journaux de modération', { skip: skip() }, () => {
   })
 })
 
+describe('GET /api/admin/users', { skip: skip() }, () => {
+  beforeEach(async () => {
+    if (db.skipped) return
+    await db.pool.query(`INSERT INTO users (username, password_hash, role) VALUES
+      ('Alice', 'h', 'user'), ('Alicia', 'h', 'superuser'), ('Bob', 'h', 'admin'), ('b_c', 'h', 'user'), ('bxc', 'h', 'user')`)
+    await db.pool.query(`INSERT INTO bans (username, reason) VALUES ('alice', 'spam')`)
+  })
+
+  const search = (query = '', role = 'admin') =>
+    app.inject({ method: 'GET', url: `/api/admin/users${query}`, headers: auth(role) })
+
+  it('liste l\'équipe quand aucune recherche n\'est faite', async () => {
+    const { users } = (await search()).json()
+    assert.deepEqual(users.map(u => u.username).sort(), ['Alicia', 'Bob'])
+  })
+
+  it('cherche par début de pseudo, sans tenir compte de la casse, avec l\'état de bannissement', async () => {
+    const { users } = (await search('?q=ALI')).json()
+    assert.deepEqual(users.map(u => u.username), ['Alice', 'Alicia'])
+    assert.equal(users[0].banned, true)
+    assert.equal(users[0].ban_reason, 'spam')
+    assert.equal(users[1].banned, false)
+  })
+
+  it('traite les jokers de LIKE comme du texte', async () => {
+    assert.deepEqual((await search('?q=%25')).json().users, [], '« % » ne doit pas tout renvoyer')
+    assert.deepEqual((await search('?q=b_')).json().users.map(u => u.username), ['b_c'], '« _ » ne doit pas valoir n\'importe quel caractère')
+  })
+
+  it('est réservée aux administrateurs', async () => {
+    assert.equal((await search('', 'user')).statusCode, 403)
+    const anonymous = await app.inject({ method: 'GET', url: '/api/admin/users' })
+    assert.equal(anonymous.statusCode, 401)
+  })
+})
+
 describe('GET /api/admin/dashboard', { skip: skip() }, () => {
+  it('compte tous les bannissements en cours, pas seulement les 10 derniers', async () => {
+    for (let i = 0; i < 12; i++) await db.pool.query(`INSERT INTO bans (username) VALUES ($1)`, [`banni${i}`])
+    await db.pool.query(`INSERT INTO bans (username, expires_at) VALUES ('expire', NOW() - INTERVAL '1 day')`)
+    const body = (await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: auth('admin') })).json()
+    assert.equal(body.global.bans_total, 12)
+  })
+
   it('agrège les statistiques globales et par plateforme', async () => {
     await db.pool.query(`
       INSERT INTO pixel_history (x,y,color_id,username,source) VALUES

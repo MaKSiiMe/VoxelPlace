@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS bans (
 -- ── Logs de modération ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS moderation_logs (
     id         SERIAL PRIMARY KEY,
-    action     VARCHAR(16) NOT NULL,         -- 'ban' | 'unban' | 'clear_pixel' | 'clear_all'
+    action     VARCHAR(16) NOT NULL,         -- 'ban' | 'unban' | 'clear_pixel' | 'clear_all' | 'role' | 'restore_canvas'
     target     VARCHAR(32),                  -- username concerné (NULL pour clear_all)
     admin      VARCHAR(32) NOT NULL,
     reason     VARCHAR(256),

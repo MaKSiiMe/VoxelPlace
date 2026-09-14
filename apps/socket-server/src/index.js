@@ -3,7 +3,7 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { Server } from 'socket.io'
 import Redis from 'ioredis'
-import { loadGrid, setPixel, clearGrid, GRID_SIZE } from './features/canvas/grid.js'
+import { loadGrid, clearGrid, GRID_SIZE } from './features/canvas/grid.js'
 import { isValidCoord } from './features/canvas/utils.js'
 import { authRoutes } from './features/auth/routes.js'
 import { createSocketAuth } from './features/auth/socket-auth.js'
@@ -14,6 +14,7 @@ import { timelapseRoutes } from './features/timelapse/routes.js'
 import { zoneRoutes } from './features/zone/routes.js'
 import { shareRoutes } from './features/share/routes.js'
 import { adminRoutes } from './features/admin/routes.js'
+import { clearPixelAsModerator } from './features/admin/moderation.js'
 import { globalDashboardRoutes } from './features/dashboard/global.js'
 import { playerDashboardRoutes } from './features/dashboard/player.js'
 import { createCooldownController } from './features/canvas/cooldown.js'
@@ -198,9 +199,7 @@ io.on('connection', async (socket) => {
     if (!socket.data.isAdmin) return ack?.({ error: 'Non autorisé' })
     if (!isValidCoord(x) || !isValidCoord(y)) return ack?.({ error: 'Coordonnées invalides' })
     try {
-      const pixel = { x, y, colorId: 0, username: '[admin]', source: 'moderation' }
-      await setPixel(redis, pixel)
-      io.emit('pixel:update', pixel)
+      await clearPixelAsModerator({ redis, pool, io }, x, y, '[superadmin]')
       logger.info(`[Admin] Pixel (${x},${y}) remis à blanc`)
       ack?.({ ok: true })
     } catch (err) {
@@ -300,7 +299,7 @@ io.on('connection', async (socket) => {
 })
 
 await adminRoutes(fastify, {
-  pool, io, usernameToSocket, JWT_SECRET, redis, setPixel, GRID_SIZE,
+  pool, io, usernameToSocket, JWT_SECRET, redis, GRID_SIZE,
   onRoleChanged: (username) => {
     cooldown.invalidate(username)
     colorAccess.invalidate(username)
