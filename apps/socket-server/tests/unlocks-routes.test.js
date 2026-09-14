@@ -54,7 +54,8 @@ describe('GET /api/unlocks/tree', { skip: skip() }, () => {
 
   it('marque les fonctionnalités à venir et ne liste plus celles retirées', async () => {
     const { tree } = (await getTree()).json()
-    assert.equal(tree.find(n => n.nodeId === 'feature:heatmap').comingSoon, true)
+    assert.equal(tree.find(n => n.nodeId === 'feature:search').comingSoon, true)
+    assert.equal(tree.find(n => n.nodeId === 'feature:heatmap').comingSoon, false, 'livrée')
     assert.equal(tree.find(n => n.nodeId === 'color:6').comingSoon, false)
     assert.equal(tree.find(n => n.nodeId === 'feature:leaderboard'), undefined)
   })

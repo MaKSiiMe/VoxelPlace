@@ -79,24 +79,29 @@ flowchart LR
 
 ## Fonctionnalités
 
-Toutes sont pour l'instant **« À venir »** (`comingSoon`) : aucune interface ne les rend
+Une fonctionnalité **livrée** est vérifiée par le serveur (`requireFeature` : 401 sans compte,
+403 si elle n'est pas débloquée ; superuser, admin et superadmin y ont accès d'office).
+Les autres sont **« À venir »** (`comingSoon`) : aucune interface ne les rend encore
 utilisables. Elles restent visibles avec leurs conditions, mais ne se débloquent pas, ne
 sont pas annoncées et ne coûtent rien. Chaque fonctionnalité livrée lève son marqueur.
 
-| Fonctionnalité | Conditions | Coût |
-|----------------|-----------|------|
-| Sélection de zone | 1 pixel de chaque couleur débloquée | — |
-| Partage de zone | Sélection de zone | 5 h |
-| GIF de zone | Partage de zone | 10 h |
-| Timelapse + GIF personnel | Sélection de zone, 3 jours joués, 1 pixel perdu | — |
-| Timelapse + GIF canvas global | Timelapse personnel, 10 zones 64×64 visitées | — |
-| Heatmap | 50 pixels perdus | — |
-| Recherche joueur | 25 pixels écrasés | — |
-| Dashboard global | 100 pixels écrasés | — |
-| Dashboard joueur | 100 pixels posés | — |
-| Profil public | Top 100 + toutes les autres fonctionnalités | — |
-| Surbrillance de ses pixels | 1 pixel de chaque couleur de base | — |
-| Mode clair/sombre | 10 blanc + 10 noir | — |
+Les seuils des fonctionnalités livrées ont été abaissés pour la taille actuelle de la
+communauté (septembre 2026).
+
+| Fonctionnalité | Conditions | Coût | État |
+|----------------|-----------|------|------|
+| Sélection de zone | 1 pixel de chaque couleur débloquée | — | À venir |
+| Partage de zone | Sélection de zone | 5 h | À venir |
+| GIF de zone | Partage de zone | 10 h | À venir |
+| Timelapse + GIF personnel | Sélection de zone, 3 jours joués, 1 pixel perdu | — | À venir |
+| Timelapse + GIF canvas global | Timelapse personnel, 10 zones 64×64 visitées | — | À venir |
+| **Heatmap** | 10 pixels perdus (50 à l'origine) | — | **Livrée** |
+| Recherche joueur | 25 pixels écrasés | — | À venir |
+| Dashboard global | 100 pixels écrasés | — | À venir |
+| Dashboard joueur | 100 pixels posés | — | À venir |
+| Profil public | Top 100 + toutes les autres fonctionnalités | — | À venir |
+| Surbrillance de ses pixels | 1 pixel de chaque couleur de base | — | À venir |
+| Mode clair/sombre | 10 blanc + 10 noir | — | À venir |
 
 ### Retirées de l'arbre
 Le **classement**, les **statistiques personnelles**, la **minimap** et l'**inspecteur de

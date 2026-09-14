@@ -122,8 +122,8 @@ export const TREE = {
   'feature:search': { type: 'feature', name: 'Recherche joueur', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_overwritten', min: 25 },
   ]},
-  'feature:heatmap': { type: 'feature', name: 'Heatmap', comingSoon: true, streakCost: 0, conditions: [
-    { type: 'pixels_lost', min: 50 },
+  'feature:heatmap': { type: 'feature', name: 'Heatmap', streakCost: 0, conditions: [
+    { type: 'pixels_lost', min: 10 },   // 50 à l'origine : hors d'atteinte pour la communauté actuelle
   ]},
   'feature:dashboard_global': { type: 'feature', name: 'Dashboard global', comingSoon: true, streakCost: 0, conditions: [
     { type: 'pixels_overwritten', min: 100 },
