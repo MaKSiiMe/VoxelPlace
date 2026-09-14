@@ -1,44 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { BEZEL_COLOR, BORDER_COLOR, ACCENT_RED, ACCENT_BLUE } from '@features/hud/theme'
-import { getRoleFromToken } from '../../auth/utils'
-import { API_URL } from '@shared/api'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Button, Field } from '@shared/ui'
+import { adminApi } from '../api'
+import { clearAdminToken, getAdminSession, storeAdminToken, type AdminSession } from '../session'
 
-const ADMIN_ROLES = new Set(['admin', 'superadmin'])
-
-function getRole(): string | null {
-  try {
-    return getRoleFromToken(localStorage.getItem('voxelplace:token'))
-  } catch {
-    return null
-  }
+interface Props {
+  children: (session: AdminSession, logout: () => void) => ReactNode
 }
 
-export function AdminGuard({ children }: { children: React.ReactNode }) {
-  const [authorized, setAuthorized] = useState<boolean | null>(null)
-  const [password,   setPassword]   = useState('')
-  const [error,      setError]      = useState<string | null>(null)
-  const [loading,    setLoading]    = useState(false)
+/**
+ * Accès au tableau de bord : un compte joueur modérateur passe directement,
+ * sinon le mot de passe d'administration est demandé.
+ */
+export function AdminGuard({ children }: Props) {
+  const [session,  setSession]  = useState<AdminSession | null | undefined>(undefined)
+  const [password, setPassword] = useState('')
+  const [error,    setError]    = useState<string | null>(null)
+  const [loading,  setLoading]  = useState(false)
 
-  useEffect(() => {
-    setAuthorized(ADMIN_ROLES.has(getRole() ?? ''))
-  }, [])
+  useEffect(() => { setSession(getAdminSession()) }, [])
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: FormEvent) {
     e.preventDefault()
+    if (loading || !password) return
     setLoading(true)
     setError(null)
     try {
-      const res  = await fetch(`${API_URL}/api/admin/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ password }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Mot de passe incorrect')
-      localStorage.setItem('voxelplace:token', data.token)
-      setAuthorized(true)
+      const { token } = await adminApi.login(password)
+      storeAdminToken(token)
+      setSession(getAdminSession())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue')
     } finally {
@@ -46,78 +37,39 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     }
   }
 
-  if (authorized === null) return null
-
-  if (!authorized) {
-    return (
-      <div style={{
-        minHeight:      '100vh',
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        background:     '#1a1b26',
-      }}>
-        <form onSubmit={handleLogin} style={{
-          background:   BEZEL_COLOR,
-          border:       `1px solid ${BORDER_COLOR}`,
-          borderRadius: 12,
-          padding:      32,
-          display:      'flex',
-          flexDirection: 'column',
-          gap:          12,
-          minWidth:     280,
-        }}>
-          <p style={{ color: '#c0caf5', fontWeight: 700, fontSize: 18, margin: 0, textAlign: 'center' }}>
-            Administration
-          </p>
-
-          <label
-            htmlFor="admin-password"
-            style={{ color: '#a9b1d6', fontSize: 13, margin: 0 }}
-          >
-            Mot de passe admin
-          </label>
-          <input
-            id="admin-password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            autoFocus
-            aria-required="true"
-            style={{
-              background:   '#1a1b26',
-              border:       `1px solid ${BORDER_COLOR}`,
-              borderRadius: 6,
-              padding:      '8px 12px',
-              color:        '#c0caf5',
-              fontSize:     14,
-              outline:      'none',
-            }}
-          />
-
-          {error && (
-            <p style={{ color: ACCENT_RED, fontSize: 13, margin: 0, textAlign: 'center' }}>
-              {error}
-            </p>
-          )}
-
-          <button type="submit" disabled={loading || !password} style={{
-            background:    loading ? BORDER_COLOR : ACCENT_BLUE,
-            border:        'none',
-            borderRadius:  6,
-            padding:       '8px 16px',
-            color:         '#1a1b26',
-            fontWeight:    700,
-            fontSize:      14,
-            cursor:        loading ? 'not-allowed' : 'pointer',
-          }}>
-            {loading ? '...' : 'Connexion'}
-          </button>
-        </form>
-      </div>
-    )
+  function logout() {
+    clearAdminToken()
+    setPassword('')
+    setSession(getAdminSession())
   }
 
-  return <>{children}</>
+  if (session === undefined) return null
+  if (session) return <>{children(session, logout)}</>
+
+  return (
+    <main className="grid min-h-dvh place-items-center bg-bg px-4">
+      <form onSubmit={handleLogin} className="flex w-full max-w-sm flex-col gap-4 rounded-panel border border-line bg-surface p-6 shadow-float">
+        <div>
+          <h1 className="text-base font-semibold text-fg">Modération</h1>
+          <p className="mt-1 text-sm text-fg-muted">
+            Connecte-toi au jeu avec un compte modérateur, ou saisis le mot de passe d’administration.
+          </p>
+        </div>
+        <Field
+          label="Mot de passe d’administration"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          autoFocus
+          required
+          error={error}
+        />
+        <Button type="submit" variant="primary" disabled={loading || !password}>
+          {loading ? 'Connexion…' : 'Se connecter'}
+        </Button>
+        <a href="/" className="text-center text-sm text-fg-muted underline underline-offset-2 hover:text-fg">Retour à la toile</a>
+      </form>
+    </main>
+  )
 }
