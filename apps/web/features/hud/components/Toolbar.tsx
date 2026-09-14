@@ -5,12 +5,13 @@ import { useHudStore, type PanelId } from '../store'
 import { useMediaQuery } from '@shared/useMediaQuery'
 import {
   IconButton, IconLink, Surface,
-  TrophyIcon, ChartIcon, TreeIcon, HelpIcon, SettingsIcon, ShieldIcon, EyeIcon, BrushIcon,
+  TrophyIcon, ChartIcon, FilmIcon, TreeIcon, HelpIcon, SettingsIcon, ShieldIcon, EyeIcon, BrushIcon,
 } from '@shared/ui'
 
 const TOOLS: { id: PanelId; label: string; icon: React.ReactNode; needsAccount?: boolean }[] = [
   { id: 'leaderboard', label: 'Classement',   icon: <TrophyIcon /> },
   { id: 'stats',       label: 'Mes stats',    icon: <ChartIcon />, needsAccount: true },
+  { id: 'timelapse',   label: 'Timelapse',    icon: <FilmIcon />,  needsAccount: true },
   { id: 'unlocks',     label: 'Progression',  icon: <TreeIcon />,  needsAccount: true },
   { id: 'help',        label: 'Aide',         icon: <HelpIcon /> },
   { id: 'settings',    label: 'Paramètres',   icon: <SettingsIcon /> },

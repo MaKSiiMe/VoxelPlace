@@ -15,6 +15,7 @@ import { lockedColorsFrom } from '@features/unlocks/progress'
 const HelpDialog        = dynamic(() => import('./HelpDialog').then(m => ({ default: m.HelpDialog })),               { ssr: false })
 const SettingsDialog    = dynamic(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })),       { ssr: false })
 const LeaderboardDialog = dynamic(() => import('./LeaderboardDialog').then(m => ({ default: m.LeaderboardDialog })), { ssr: false })
+const TimelapseDialog   = dynamic(() => import('@features/timelapse/components/TimelapseDialog').then(m => ({ default: m.TimelapseDialog })), { ssr: false })
 const StatsDialog       = dynamic(() => import('./StatsDialog').then(m => ({ default: m.StatsDialog })),             { ssr: false })
 const UnlockPanel       = dynamic(() => import('@features/unlocks/components/UnlockPanel').then(m => ({ default: m.UnlockPanel })), { ssr: false })
 
@@ -41,7 +42,8 @@ export function Hud({ username, onOpenAuth, onLogout }: Props) {
   return (
     <>
       {/* Haut : identité et coordonnées */}
-      <div className="pointer-events-none fixed inset-x-3 top-3 z-30 flex items-start justify-between gap-3">
+      {/* flex-wrap : sur mobile, une barre d'outils trop longue (compte admin) passe sous le logo au lieu de sortir de l'écran */}
+      <div className="pointer-events-none fixed inset-x-3 top-3 z-30 flex flex-wrap items-start justify-between gap-3">
         <div className="pointer-events-auto"><Brand /></div>
         <div className="pointer-events-auto hidden md:block"><CoordinatesPill /></div>
         {/* Sur mobile, la barre d'outils se range en haut à droite */}
@@ -66,6 +68,7 @@ export function Hud({ username, onOpenAuth, onLogout }: Props) {
       <UnlockPanel       open={panel === 'unlocks'}     onClose={closePanel} />
       <LeaderboardDialog open={panel === 'leaderboard'} onClose={closePanel} />
       <StatsDialog       open={panel === 'stats'}       onClose={closePanel} username={username} />
+      <TimelapseDialog   open={panel === 'timelapse'}   onClose={closePanel} />
       <HelpDialog        open={panel === 'help'}        onClose={closePanel} />
       <SettingsDialog    open={panel === 'settings'}    onClose={closePanel} username={username} onLogout={onLogout} onOpenAuth={onOpenAuth} />
     </>

@@ -149,7 +149,7 @@ les 16 (voir [`docs/skill-tree.md`](docs/skill-tree.md)).
 - Cooldown selon le rôle (réduit par le streak jusqu'à 20 s)
 - Historique complet de chaque pixel (git blame pixel)
 - Partage de zone rectangulaire par lien court
-- Timelapse + export GIF (global et personnel)
+- Timelapse en GIF, de ses pixels ou de toute la toile, avec aperçu et téléchargement (à débloquer)
 - Heatmap des zones actives, en calque sur la toile (à débloquer : 10 pixels perdus)
 - Minimap cliquable (256×256)
 
@@ -223,7 +223,6 @@ Tableau de bord `/dashboard`, ouvert aux comptes modérateurs ou par le mot de p
 | GET | `/api/pixel/:x/:y` | Métadonnées d'un pixel |
 | GET | `/api/pixel/:x/:y/history` | Historique d'un pixel |
 | GET | `/api/heatmap?since=` | Densité des poses par case de 8 px, taille fixe (compte ayant débloqué la heatmap) |
-| GET | `/api/history?limit=` | Historique complet (timelapse) |
 | GET | `/api/stats` | Stats globales (pixels par plateforme) |
 | GET | `/api/pulse` | Activité par minute (3 dernières heures) |
 
@@ -243,7 +242,8 @@ Tableau de bord `/dashboard`, ouvert aux comptes modérateurs ou par le mot de p
 | POST | `/api/share` | Créer un lien de partage |
 | GET | `/api/share/:id` | Récupérer une zone partagée |
 | GET | `/api/zone/gif` | Timelapse GIF d'une zone |
-| GET | `/api/timelapse/gif` | Timelapse GIF global |
+| GET | `/api/timelapse/gif?since=` | Timelapse GIF de toute la toile (compte ayant débloqué le timelapse global) |
+| GET | `/api/players/:username/gif?since=` | Timelapse GIF de ses propres pixels (timelapse personnel ; l'équipe peut voir celui des autres) |
 
 ### Skill tree
 
@@ -336,7 +336,7 @@ Tableau de bord `/dashboard`, ouvert aux comptes modérateurs ou par le mot de p
 npm run verify          # lint + tests backend + tests frontend + build
 ```
 
-**655 tests** — 413 côté backend (`node:test`), 242 côté frontend (Vitest).
+**685 tests** — 434 côté backend (`node:test`), 251 côté frontend (Vitest).
 
 Les tests backend tournent contre un **vrai PostgreSQL 16**, la version de
 production : un émulateur en mémoire ne sait pas exécuter les requêtes
@@ -359,7 +359,8 @@ appliqué à un buffer de 4 Mo, qu'il faut reproduire fidèlement.
 | Chat (en sommeil) | `chat` | 21 |
 | Heatmap | `heatmap` | 18 |
 | Zones & partage | `zone-share` | 18 |
-| Timelapses GIF | `gif` | 16 |
+| Timelapses GIF | `gif` | 21 |
+| Timelapse (verrous) | `timelapse` | 16 |
 | Joueurs & présence | `players-profile`, `presence` | 17 |
 | Cooldown | `cooldown` | 14 |
 | Synchronisation de la palette | `palette-sync` | 9 |

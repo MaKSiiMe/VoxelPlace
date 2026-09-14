@@ -141,14 +141,16 @@ export const TREE = {
   ]},
 
   // ── Features — Timelapse ─────────────────────────────────────────────────────
-  'feature:timelapse_personal': { type: 'feature', name: 'Timelapse + GIF personnel', comingSoon: true, streakCost: 0, conditions: [
-    { type: 'feature_unlocked', nodeId: 'feature:zone_select' },
-    { type: 'days_played', min: 3 },
+  // Le timelapse personnel exigeait la sélection de zone, qui n'est pas encore
+  // livrée : personne n'aurait pu le débloquer. Seuils abaissés pour la
+  // communauté actuelle (3 jours → 2, 10 zones → 5).
+  'feature:timelapse_personal': { type: 'feature', name: 'Timelapse + GIF personnel', streakCost: 0, conditions: [
+    { type: 'days_played', min: 2 },
     { type: 'pixels_lost', min: 1 },
   ]},
-  'feature:timelapse_global': { type: 'feature', name: 'Timelapse + GIF canvas global', comingSoon: true, streakCost: 0, conditions: [
+  'feature:timelapse_global': { type: 'feature', name: 'Timelapse + GIF canvas global', streakCost: 0, conditions: [
     { type: 'feature_unlocked', nodeId: 'feature:timelapse_personal' },
-    { type: 'zones_visited', min: 10 },
+    { type: 'zones_visited', min: 5 },
   ]},
 
   // ── Features — Canvas & UX ───────────────────────────────────────────────────

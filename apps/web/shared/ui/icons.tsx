@@ -25,5 +25,6 @@ export const LocateIcon      = () => <Icon><circle cx="12" cy="12" r="3" /><path
 export const UserIcon        = () => <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Icon>
 export const LogoutIcon      = () => <Icon><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></Icon>
 export const EyeIcon         = () => <Icon><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z" /><circle cx="12" cy="12" r="3" /></Icon>
+export const FilmIcon        = () => <Icon><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></Icon>
 export const FlameIcon       = () => <Icon><path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-9-1 2-2 3-3.5 3.5C11 7 11 4 9 2 8 6 5 8.5 5 14c0 4.5 3 8 7 8Z" /></Icon>
 export const BrushIcon       = () => <Icon><path d="m18.4 2.6 3 3L11 16l-3-3L18.4 2.6Z" /><path d="M8 13c-2 0-3.5 1.5-3.5 3.5 0 1.5-1 2.5-2.5 3 2 1 6 1 7.5-.5C11 17.5 10 13 8 13Z" /></Icon>
