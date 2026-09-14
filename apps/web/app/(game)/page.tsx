@@ -9,6 +9,8 @@ import { useAuthStore }   from '@features/auth/store'
 import { Toaster }        from '@features/notifications/components/Toaster'
 import { notify }         from '@features/notifications/store'
 import { useSocketNotifications } from '@features/notifications/hooks/useSocketNotifications'
+import { parsePixelLink } from '@features/canvas/pixelLink'
+import { navigateToPixel } from '@features/canvas/viewportState'
 
 const CanvasEngine = dynamic(
   () => import('@features/canvas/components/CanvasEngine').then(m => ({ default: m.CanvasEngine })),
@@ -48,6 +50,7 @@ export default function GamePage() {
 
   useSocket(effectiveUser)
   useSocketNotifications()
+  useLinkedPixel()
 
   if (!effectiveUser) return null
 
@@ -76,4 +79,18 @@ export default function GamePage() {
       />
     </main>
   )
+}
+
+/**
+ * Lien direct vers un pixel (« /?x=-12&y=40 ») : la vue s'y centre et
+ * l'inspecteur s'ouvre dessus. C'est le chemin qu'emprunte la modération
+ * depuis un signalement.
+ */
+function useLinkedPixel() {
+  useEffect(() => {
+    const target = parsePixelLink(window.location.search)
+    if (!target) return
+    navigateToPixel(target.x, target.y)
+    useCanvasStore.getState().setInspectedPixel(target)
+  }, [])
 }

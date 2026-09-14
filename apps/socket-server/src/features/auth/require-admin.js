@@ -44,3 +44,16 @@ export function requireAdmin(req, reply, { jwtSecret, superAdminOnly = false }) 
     return null
   }
 }
+
+/**
+ * Nom sous lequel un modérateur apparaît dans les journaux.
+ *
+ * Il vient du jeton vérifié, jamais de la requête : les routes lisaient
+ * auparavant `banned_by`, `reviewed_by` ou l'en-tête `x-admin-name`, que
+ * n'importe quel administrateur pouvait remplir au nom d'un autre. Le jeton
+ * du mot de passe admin ne porte pas de pseudo : il signe « [superadmin] ».
+ */
+export function moderatorName(payload) {
+  const username = typeof payload?.username === 'string' ? payload.username.trim() : ''
+  return username ? username.slice(0, 32) : `[${payload?.role ?? 'admin'}]`
+}

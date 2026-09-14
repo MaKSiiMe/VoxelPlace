@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken'
 import { isValidCoord, sanitizeUsername } from '../canvas/utils.js'
 import { sanitizeMessage } from '../chat/message.js'
 import { checkRateLimit } from '../auth/rate-limit.js'
-import { requireAdmin } from '../auth/require-admin.js'
+import { requireAdmin, moderatorName } from '../auth/require-admin.js'
 import { parsePositiveInt } from '../../shared/query.js'
 
 // ── Validation pure (testable sans DB) ───────────────────────────────────────
@@ -54,6 +54,7 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
   }
 
   const isAdmin = (req, reply) => requireAdmin(req, reply, { jwtSecret: JWT_SECRET }) !== null
+  const moderatorOf = (req, reply) => requireAdmin(req, reply, { jwtSecret: JWT_SECRET })
 
   // Soumettre un signalement
   // POST /api/report
@@ -103,13 +104,15 @@ export async function reportRoutes(fastify, { pool, JWT_SECRET }) {
   // Marquer un signalement comme traité (admin)
   // PATCH /api/admin/reports/:id
   fastify.patch('/api/admin/reports/:id', async (req, reply) => {
-    if (!isAdmin(req, reply)) return
+    const moderator = moderatorOf(req, reply)
+    if (!moderator) return
 
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) {
       return reply.status(400).send({ error: 'Identifiant de signalement invalide' })
     }
-    const reviewed_by = req.body?.reviewed_by ?? '[admin]'
+    // Du jeton, jamais du corps : sinon n'importe quel admin signe au nom d'un autre
+    const reviewed_by = moderatorName(moderator)
 
     const { rowCount } = await pool.query(
       `UPDATE reports

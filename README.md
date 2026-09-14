@@ -176,10 +176,13 @@ les 16 (voir [`docs/skill-tree.md`](docs/skill-tree.md)).
 - Leaderboard top joueurs
 
 ### Admin & Modération
-- Dashboard admin (stats globales, activité par plateforme)
-- Suppression pixel, vidage canvas, restauration depuis PostgreSQL
-- Bannissement / débannissement utilisateur
-- Queue de signalements avec workflow de traitement
+Tableau de bord `/dashboard`, ouvert aux comptes modérateurs ou par le mot de passe d'administration :
+- File des signalements, avec lien direct vers le pixel signalé (`/?x=…&y=…`, repère du HUD)
+- Bannissement temporaire ou définitif, débannissement, recherche de joueurs
+- Attribution des rôles (superuser, modérateur, administrateur) — réservée à l'administrateur
+- Effacement de pixel, restauration de la toile depuis l'historique, vidage avec confirmation saisie
+- Journal de modération, chaque action signée du modérateur authentifié
+- Statistiques : activité des dernières 24 h, plateformes, joueurs les plus actifs
 - Logs de modération publics
 
 ### OG Image dynamique
@@ -265,11 +268,14 @@ les 16 (voir [`docs/skill-tree.md`](docs/skill-tree.md)).
 |---------|-------|------|-------------|
 | POST | `/api/admin/login` | — | Connexion admin → JWT |
 | GET | `/api/admin/dashboard` | JWT | Stats admin globales |
-| DELETE | `/api/admin/pixel/clear` | JWT | Supprimer un pixel |
-| DELETE | `/api/admin/canvas` | JWT | Vider le canvas |
-| POST | `/api/admin/restore-canvas` | JWT | Reconstruire Redis depuis PostgreSQL |
-| POST | `/api/admin/ban/:username` | JWT | Bannir un joueur |
+| POST | `/api/admin/pixel/clear` | JWT | Remettre un pixel à blanc (inscrit dans l'historique) |
+| DELETE | `/api/admin/canvas` | JWT superadmin | Vider le canvas |
+| POST | `/api/admin/restore-canvas` | JWT superadmin | Reconstruire Redis depuis PostgreSQL |
+| POST | `/api/admin/ban/:username` | JWT | Bannir un joueur (`reason`, `expires_in_days` de 1 à 3650 ou rien) |
 | DELETE | `/api/admin/ban/:username` | JWT | Débannir un joueur |
+| GET | `/api/admin/bans` | JWT | Bannissements, en cours et expirés |
+| GET | `/api/admin/users?q=` | JWT | Recherche de comptes ; sans `q`, l'équipe |
+| PATCH | `/api/admin/users/:username/role` | JWT superadmin | Changer le rôle d'un compte |
 | GET | `/api/admin/reports` | JWT | Queue des signalements |
 | PATCH | `/api/admin/reports/:id` | JWT | Marquer un signalement traité |
 | GET | `/api/admin/logs` | JWT | Logs de modération |
@@ -330,7 +336,7 @@ les 16 (voir [`docs/skill-tree.md`](docs/skill-tree.md)).
 npm run verify          # lint + tests backend + tests frontend + build
 ```
 
-**575 tests** — 366 côté backend (`node:test`), 209 côté frontend (Vitest).
+**606 tests** — 379 côté backend (`node:test`), 227 côté frontend (Vitest).
 
 Les tests backend tournent contre un **vrai PostgreSQL 16**, la version de
 production : un émulateur en mémoire ne sait pas exécuter les requêtes
@@ -346,8 +352,8 @@ appliqué à un buffer de 4 Mo, qu'il faut reproduire fidèlement.
 | Domaine | Fichiers | Tests |
 |---------|----------|-------|
 | Canvas & pose de pixel | `place-pixel`, `canvas-redis`, `canvas-routes`, `grid`, `grid-transport`, `validation` | 83 |
+| Administration & modération | `admin-routes`, `report-routes`, `report` | 76 |
 | Authentification & compte | `auth-routes`, `auth`, `socket-auth`, `rate-limit`, `account-erasure`, `player-identity` | 63 |
-| Administration & modération | `admin-routes`, `report-routes`, `report` | 63 |
 | Progression & couleurs | `unlocks-engine`, `unlocks-routes`, `unlocks-migrations`, `color-access` | 56 |
 | Déploiement & infrastructure | `deployment` | 22 |
 | Chat (en sommeil) | `chat` | 21 |

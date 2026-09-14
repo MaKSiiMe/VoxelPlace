@@ -23,11 +23,23 @@ export interface ViewportControls {
 }
 
 let controls: ViewportControls | null = null
+// Demande de navigation arrivée avant l'initialisation du canvas (lien direct
+// vers un pixel) : appliquée dès que les contrôles sont disponibles.
+let pendingTarget: { gx: number; gy: number } | null = null
 
-export function registerViewportControls(c: ViewportControls) { controls = c }
-export function unregisterViewportControls()                   { controls = null }
+export function registerViewportControls(c: ViewportControls) {
+  controls = c
+  if (pendingTarget) {
+    c.navigate(pendingTarget.gx, pendingTarget.gy)
+    pendingTarget = null
+  }
+}
+export function unregisterViewportControls() { controls = null }
 
-export function navigateToPixel(gx: number, gy: number) { controls?.navigate(gx, gy) }
+export function navigateToPixel(gx: number, gy: number) {
+  if (controls) controls.navigate(gx, gy)
+  else pendingTarget = { gx, gy }
+}
 export function zoomBy(factor: number)                  { controls?.zoomBy(factor) }
 export function recenterView()                          { controls?.recenter() }
 

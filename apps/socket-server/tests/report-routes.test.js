@@ -169,11 +169,12 @@ describe('PATCH /api/admin/reports/:id', { skip: skip() }, () => {
     assert.equal((await review(reportId, bearer(forgedToken({ isAdmin: true })))).statusCode, 401)
   })
 
-  it('marque le signalement comme traité', async () => {
-    assert.equal((await review(reportId, admin())).statusCode, 200)
+  it('marque le signalement comme traité, au nom du jeton', async () => {
+    const modo = bearer(jwt.sign({ role: 'admin', username: 'Modo' }, TEST_JWT_SECRET, { expiresIn: '1h' }))
+    assert.equal((await review(reportId, modo)).statusCode, 200)
     const { rows } = await db.pool.query('SELECT status, reviewed_by FROM reports WHERE id = $1', [reportId])
     assert.equal(rows[0].status,      'reviewed')
-    assert.equal(rows[0].reviewed_by, 'Maxime')
+    assert.equal(rows[0].reviewed_by, 'Modo', 'reviewed_by envoyé dans le corps est ignoré')
   })
 
   it('renvoie 404 pour un signalement déjà traité', async () => {
