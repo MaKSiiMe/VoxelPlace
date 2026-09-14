@@ -34,7 +34,9 @@ export function CookieBanner() {
   return (
     <aside
       aria-label="Information sur le stockage local"
-      className="fixed inset-x-3 bottom-[150px] z-50 flex flex-col gap-3 rounded-panel bg-surface p-4 shadow-float md:inset-x-auto md:bottom-3 md:left-3 md:max-w-sm"
+      // Sur mobile, sous la barre du haut : en bas, il recouvrait la palette dès
+      // qu'elle s'agrandit (conditions d'une couleur verrouillée, cooldown).
+      className="fixed inset-x-3 top-[72px] z-50 flex flex-col gap-3 rounded-panel bg-surface p-4 shadow-float md:inset-x-auto md:top-auto md:bottom-3 md:left-3 md:max-w-sm"
     >
       <p className="text-sm text-fg-muted">
         VoxelPlace garde ta session ouverte grâce au stockage local de ton navigateur.
