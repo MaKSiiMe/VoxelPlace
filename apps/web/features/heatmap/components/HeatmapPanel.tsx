@@ -1,7 +1,6 @@
 'use client'
 
-import { useCanvasStore } from '@features/canvas/store'
-import { useUnlocksStore } from '@features/unlocks/store'
+import { useFeatureAccess } from '@features/unlocks/useFeatureAccess'
 import { useHudStore } from '@features/hud/store'
 import { IconButton, cn, CloseIcon, FlameIcon, LockIcon } from '@shared/ui'
 import { useHeatmapStore } from '../store'
@@ -15,19 +14,9 @@ const PERIODS: { value: HeatmapPeriod; label: string; long: string }[] = [
   { value: 'all', label: 'Tout', long: 'depuis le début' },
 ]
 
-const STAFF = new Set(['superuser', 'admin', 'superadmin'])
-
-/** Accès à la heatmap : débloquée dans l'arbre, ou d'office pour l'équipe (règle du serveur). */
-export function useHeatmapAccess(): 'hidden' | 'locked' | 'open' {
-  const role = useCanvasStore((s) => s.role)
-  const unlocked = useUnlocksStore((s) => s.tree.find((n) => n.nodeId === 'feature:heatmap')?.unlocked ?? false)
-  if (!role) return 'hidden'
-  return unlocked || STAFF.has(role) ? 'open' : 'locked'
-}
-
 /** Bouton du groupe de vue. */
 export function HeatmapToggle({ tooltipSide = 'top' }: { tooltipSide?: 'top' | 'left' }) {
-  const access          = useHeatmapAccess()
+  const access          = useFeatureAccess('feature:heatmap')
   const enabled         = useHeatmapStore((s) => s.enabled)
   const setEnabled      = useHeatmapStore((s) => s.setEnabled)
   const openProgression = useHudStore((s) => s.openProgression)

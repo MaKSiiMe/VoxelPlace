@@ -93,8 +93,8 @@ communauté (septembre 2026).
 | Sélection de zone | 1 pixel de chaque couleur débloquée | — | À venir |
 | Partage de zone | Sélection de zone | 5 h | À venir |
 | GIF de zone | Partage de zone | 10 h | À venir |
-| Timelapse + GIF personnel | Sélection de zone, 3 jours joués, 1 pixel perdu | — | À venir |
-| Timelapse + GIF canvas global | Timelapse personnel, 10 zones 64×64 visitées | — | À venir |
+| **Timelapse + GIF personnel** | 2 jours joués, 1 pixel perdu (à l'origine : sélection de zone, 3 jours) | — | **Livrée** |
+| **Timelapse + GIF canvas global** | Timelapse personnel, 5 zones 64×64 visitées (10 à l'origine) | — | **Livrée** |
 | **Heatmap** | 10 pixels perdus (50 à l'origine) | — | **Livrée** |
 | Recherche joueur | 25 pixels écrasés | — | À venir |
 | Dashboard global | 100 pixels écrasés | — | À venir |
