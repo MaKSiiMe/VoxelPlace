@@ -208,11 +208,16 @@ describe('checkFeatureUnlocks', { skip: skip() }, () => {
     assert.ok(!(await getUnlocks(db.pool, 'Alice')).has('feature:bientot'))
   })
 
-  it('n\'annonce rien sur l\'arbre réel, dont aucune fonctionnalité n\'a encore d\'interface', async () => {
+  it('sur l\'arbre réel, n\'annonce que les fonctionnalités livrées', async () => {
     await createUser()
     await setStats('Alice', 99_999)
     await db.pool.query(`UPDATE user_stats SET days_played = '["a","b","c"]', zones_visited = '["1","2","3","4","5","6","7","8","9","10"]' WHERE username = 'Alice'`)
-    assert.deepEqual(await checkFeatureUnlocks(db.pool, 'Alice'), [])
+    const delivered = Object.entries(TREE)
+      .filter(([, n]) => n.type === 'feature' && !n.comingSoon && n.streakCost === 0)
+      .map(([id]) => id)
+    const unlocks = await checkFeatureUnlocks(db.pool, 'Alice')
+    assert.deepEqual(unlocks.map(u => u.nodeId).sort(), delivered.sort())
+    for (const { nodeId } of unlocks) assert.ok(!TREE[nodeId].comingSoon, `${nodeId} est encore à venir`)
   })
 })
 

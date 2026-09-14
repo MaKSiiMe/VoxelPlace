@@ -90,7 +90,7 @@ await zoneRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 await shareRoutes(fastify, { pool, redis, gridSize: GRID_SIZE })
 await healthRoutes(fastify, { redis, pool })
 await canvasRoutes(fastify, { redis, pool })
-await analyticsRoutes(fastify, { pool, redis })
+await analyticsRoutes(fastify, { pool, redis, JWT_SECRET })
 
 // --- Socket.io ---
 const io = new Server(fastify.server, {
