@@ -47,8 +47,8 @@ services:
       ADMIN_PASSWORD:  "${ADMIN_PASSWORD}"
       JWT_SECRET:      "${JWT_SECRET}"
       # Secret partagé avec le plugin Minecraft (bridge-token dans son config.yml).
-      # Vide : les pixels posés depuis Minecraft sont refusés.
-      BRIDGE_TOKEN:    "${BRIDGE_TOKEN:-}"
+      # Obligatoire : l'API refuse de démarrer sans lui.
+      BRIDGE_TOKEN:    "${BRIDGE_TOKEN:?BRIDGE_TOKEN manquant}"
       TEST_USERNAMES:  "${TEST_USERNAMES:-}"
     depends_on:
       voxelplace-db:

@@ -40,9 +40,14 @@ import { profileRoutes } from './features/profile/routes.js'
 const PORT            = parseInt(process.env.PORT || '3001', 10)
 const REDIS_URL       = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
 const JWT_SECRET      = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
-// Secret partagé avec les ponts de jeu. Absent, aucun socket ne peut se
-// présenter comme pont : les poses venues de Minecraft sont refusées.
-const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN || ''
+// Secret partagé avec les ponts de jeu. Obligatoire : sans lui, aucun socket ne
+// pourrait se présenter comme pont et les poses venues de Minecraft seraient
+// refusées en silence (production du 17/11/2026, déployée sans la variable).
+const BRIDGE_TOKEN    = (process.env.BRIDGE_TOKEN || '').trim()
+if (!BRIDGE_TOKEN) {
+  logger.fatal('BRIDGE_TOKEN manquant : générer un secret (openssl rand -hex 32), le donner à l\'API et au plugin (bridge-token dans son config.yml)')
+  process.exit(1)
+}
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://localhost:3000']
@@ -329,9 +334,6 @@ try {
   await runUnlockMigrations(pool)
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
   logger.info(`[Fastify] Serveur démarré sur http://0.0.0.0:${PORT}`)
-  if (!BRIDGE_TOKEN) {
-    logger.warn('BRIDGE_TOKEN absent : les ponts de jeu ne peuvent pas s\'authentifier, les poses venues de Minecraft seront refusées')
-  }
   if (TEST_USERNAMES.size > 0) {
     logger.info(`[Rate limit] Comptes exemptés : ${[...TEST_USERNAMES].join(', ')}`)
   }
