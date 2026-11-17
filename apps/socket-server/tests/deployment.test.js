@@ -134,6 +134,12 @@ describe('stack Portainer', () => {
     assert.match(stack, /max-size: "10m"/)
   })
 
+  it('épingle Redis à sa version majeure en service, jamais latest', () => {
+    const image = service('voxelplace-redis').match(/image:\s*(redis:\S+)/)?.[1]
+    assert.ok(image && image !== 'redis:latest', `Redis doit être épinglé, pas ${image}`)
+    assert.ok(parseInt(image.split(':')[1], 10) >= 8, `${image} : la production tourne en Redis 8`)
+  })
+
   it('utilise les images publiées par la CI, au tag que la CI remplace', () => {
     for (const name of ['api', 'web', 'nginx']) {
       assert.match(stack, new RegExp(`image: ghcr\\.io/maksiime/voxelplace-${name}:latest\\n`))
