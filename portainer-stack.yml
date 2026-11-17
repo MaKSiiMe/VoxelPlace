@@ -4,7 +4,10 @@
 # est remplacé à chaque publication. Revenir en arrière : remettre l'ancien tag
 # sur la branche `deploy`.
 #
-# Variables à saisir dans Portainer : POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET.
+# Variables à saisir dans Portainer : POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET,
+# BRIDGE_TOKEN (même valeur que bridge-token dans le config.yml du plugin
+# Minecraft) et ALLOWED_ORIGINS (adresse publique du site). Sans elles, le
+# déploiement échoue.
 #
 # Base : le compose de la stack Portainer en service au 17/11/2026. Ne pas changer
 # le nom de la stack (réseau voxelplace_default) ni le nom des volumes.
@@ -18,11 +21,13 @@ x-logging: &logging
 services:
 
   voxelplace-nginx:
-    image: ghcr.io/maksiime/voxelplace-nginx:sha-1507cc8
+    image: ghcr.io/maksiime/voxelplace-nginx:sha-a74bafc
     container_name: voxelplace-nginx
     restart: always
     ports:
-      - "80:80"
+      # Loopback seulement : Tailscale Funnel entre par 127.0.0.1:80, le port n'a
+      # pas à être ouvert sur le réseau local.
+      - "127.0.0.1:80:80"
     depends_on:
       - voxelplace-web
       - voxelplace-api
@@ -35,7 +40,7 @@ services:
     environment:
       POSTGRES_DB: voxelplace
       POSTGRES_USER: voxelplace
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Lu seulement à la création d'une base vide.
@@ -51,15 +56,18 @@ services:
     logging: *logging
 
   voxelplace-api:
-    image: ghcr.io/maksiime/voxelplace-api:sha-1507cc8
+    image: ghcr.io/maksiime/voxelplace-api:sha-a74bafc
     container_name: voxelplace-api
     restart: always
     environment:
       PORT: "3001"
       REDIS_URL: "redis://voxelplace-redis:6379"
-      DATABASE_URL: "postgresql://voxelplace:${POSTGRES_PASSWORD}@voxelplace-db:5432/voxelplace"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
-      JWT_SECRET: "${JWT_SECRET}"
+      DATABASE_URL: "postgresql://voxelplace:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}@voxelplace-db:5432/voxelplace"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?ADMIN_PASSWORD manquant}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET manquant}"
+      BRIDGE_TOKEN: "${BRIDGE_TOKEN:?BRIDGE_TOKEN manquant (secret partagé avec le plugin Minecraft)}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:?ALLOWED_ORIGINS manquant (adresse publique du site)}"
+      # Comptes exemptés du cooldown : aucun en production.
       TEST_USERNAMES: ""
     depends_on:
       voxelplace-db:
@@ -67,7 +75,7 @@ services:
     logging: *logging
 
   voxelplace-web:
-    image: ghcr.io/maksiime/voxelplace-web:sha-1507cc8
+    image: ghcr.io/maksiime/voxelplace-web:sha-a74bafc
     container_name: voxelplace-web
     restart: always
     environment:
