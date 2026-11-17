@@ -23,7 +23,7 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8')
 
 describe('Dockerfiles', () => {
   it('ne copie que des fichiers qui existent réellement', () => {
-    for (const dockerfile of ['apps/socket-server/Dockerfile', 'apps/web/Dockerfile']) {
+    for (const dockerfile of ['apps/socket-server/Dockerfile', 'apps/web/Dockerfile', 'deploy/nginx.Dockerfile']) {
       const content = read(dockerfile)
       for (const line of content.split('\n')) {
         const match = line.match(/^COPY\s+(?!--from)(.+)$/)
@@ -105,6 +105,38 @@ describe('docker-compose', () => {
         example.includes(`${name}=`),
         `${name} est requis par docker-compose mais absent de .env.example`
       )
+    }
+  })
+})
+
+// Stack déployée par Portainer depuis la branche `deploy` : ses volumes portent
+// les données de production, un nom changé repartirait d'une base vide.
+describe('stack Portainer', () => {
+  const stack = read('deploy/portainer-stack.yml')
+  const service = (name) => stack.slice(stack.indexOf(`  ${name}:`), stack.indexOf('\n\n', stack.indexOf(`  ${name}:`)))
+
+  it('ne publie PostgreSQL que sur la loopback, et jamais Redis', () => {
+    assert.match(service('voxelplace-db'), /- "127\.0\.0\.1:5432:5432"/)
+    assert.doesNotMatch(service('voxelplace-redis'), /ports:/)
+  })
+
+  it('réutilise les volumes de production, sans en créer de nouveaux', () => {
+    for (const [key, name] of [['postgres_data', 'voxelplace_postgres_data'], ['redis_data', 'voxelplace_redis_data']]) {
+      assert.match(stack, new RegExp(`  ${key}:\\n    external: true\\n    name: ${name}\\n`),
+        `le volume ${key} doit rester external, nommé ${name}`)
+    }
+  })
+
+  it('limite la taille des logs de chaque service', () => {
+    const services = stack.slice(stack.indexOf('services:'), stack.indexOf('\nvolumes:'))
+    const count = (re) => (services.match(re) ?? []).length
+    assert.equal(count(/^  voxelplace-[\w-]+:$/gm), count(/^    logging: \*logging$/gm))
+    assert.match(stack, /max-size: "10m"/)
+  })
+
+  it('utilise les images publiées par la CI, au tag que la CI remplace', () => {
+    for (const name of ['api', 'web', 'nginx']) {
+      assert.match(stack, new RegExp(`image: ghcr\\.io/maksiime/voxelplace-${name}:latest\\n`))
     }
   })
 })

@@ -4,7 +4,9 @@
 // doit être signalée comme dégradée, pas comme saine.
 
 export async function healthRoutes(fastify, { redis, pool }) {
-  fastify.get('/health', async (_req, reply) => {
+  // Appelée toutes les 30 s par le HEALTHCHECK Docker : sans « silent », deux
+  // lignes de log (requête reçue, réponse envoyée) à chaque appel.
+  fastify.get('/health', { logLevel: 'silent' }, async (_req, reply) => {
     const [redisCheck, pgCheck] = await Promise.allSettled([
       redis.ping(),
       pool.query('SELECT 1'),

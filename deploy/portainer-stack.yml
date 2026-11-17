@@ -1,0 +1,97 @@
+# Stack Portainer de VoxelPlace (Stacks > voxelplace > Repository).
+# La CI publie sur la branche `deploy` ce fichier avec les images construites sur
+# GitHub (ghcr.io/maksiime/voxelplace-*:sha-<commit>) ; le tag « latest » ci-dessous
+# est remplacé à chaque publication. Revenir en arrière : remettre l'ancien tag
+# sur la branche `deploy`.
+#
+# Variables à saisir dans Portainer : POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET.
+#
+# Base : le compose de la stack Portainer en service au 17/11/2026. Ne pas changer
+# le nom de la stack (réseau voxelplace_default) ni le nom des volumes.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  voxelplace-nginx:
+    image: ghcr.io/maksiime/voxelplace-nginx:latest
+    container_name: voxelplace-nginx
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - voxelplace-web
+      - voxelplace-api
+    logging: *logging
+
+  voxelplace-db:
+    image: postgres:16-alpine
+    container_name: voxelplace-db
+    restart: always
+    environment:
+      POSTGRES_DB: voxelplace
+      POSTGRES_USER: voxelplace
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Lu seulement à la création d'une base vide.
+      - /opt/voxelplace/apps/socket-server/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      # Loopback seulement : joignable depuis l'hôte (scripts/backup-db.sh), pas du réseau.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxelplace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  voxelplace-api:
+    image: ghcr.io/maksiime/voxelplace-api:latest
+    container_name: voxelplace-api
+    restart: always
+    environment:
+      PORT: "3001"
+      REDIS_URL: "redis://voxelplace-redis:6379"
+      DATABASE_URL: "postgresql://voxelplace:${POSTGRES_PASSWORD}@voxelplace-db:5432/voxelplace"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
+      TEST_USERNAMES: ""
+    depends_on:
+      voxelplace-db:
+        condition: service_healthy
+    logging: *logging
+
+  voxelplace-web:
+    image: ghcr.io/maksiime/voxelplace-web:latest
+    container_name: voxelplace-web
+    restart: always
+    environment:
+      PORT: "3000"
+    depends_on:
+      - voxelplace-api
+    logging: *logging
+
+  voxelplace-redis:
+    # Version en service : ne jamais la faire redescendre (Redis refuse un RDB écrit
+    # par une version plus récente et quitte au démarrage).
+    image: redis:latest
+    container_name: voxelplace-redis
+    restart: always
+    # Aucun port publié : Redis n'a pas de mot de passe.
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --appendonly yes
+    logging: *logging
+
+volumes:
+  postgres_data:
+    external: true
+    name: voxelplace_postgres_data
+  redis_data:
+    external: true
+    name: voxelplace_redis_data

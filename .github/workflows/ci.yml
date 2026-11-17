@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - run: npm install
+
+      # no-undef attrape les identifiants utilisés sans import — la classe de
+      # bug qui a mis l'API à terre (verifyToken appelé sans être importé).
+      - name: ESLint
+        run: npm run lint:backend
+
+  test-backend:
+    name: Tests backend
+    runs-on: ubuntu-latest
+
+    # Les tests tournent contre un vrai PostgreSQL, à la version de production :
+    # les requêtes analytiques (LAG OVER, date_trunc, INTERVAL) ne sont pas
+    # reproductibles avec un émulateur en mémoire.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     voxelplace
+          POSTGRES_PASSWORD: voxelplace
+          POSTGRES_DB:       postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxelplace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: apps/socket-server
+        run: npm install
+
+      - name: Run backend tests
+        working-directory: apps/socket-server
+        run: npm test
+        env:
+          BCRYPT_ROUNDS:     1
+          TEST_DATABASE_URL: postgresql://voxelplace:voxelplace@localhost:5432/postgres
+
+  test-frontend:
+    name: Tests frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install web dependencies
+        run: npm install --workspace=apps/web
+
+      - name: Run frontend tests
+        run: npm test --workspace=apps/web
+
+      # Le build production type-check l'app, ce que les tests ne font pas.
+      # Sans cette étape, une erreur TypeScript passe la CI, fait échouer le
+      # build Docker sur le serveur, et l'ancienne image continue de tourner.
+      - name: Build frontend
+        run: npm run build --workspace=apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost
+
+  # Construites à chaque PR (vérification), publiées sur ghcr après une fusion sur
+  # main, une fois les tests passés : tags sha-<commit> et latest.
+  images:
+    name: Image ${{ matrix.name }}
+    needs: [lint, test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: api
+            dockerfile: apps/socket-server/Dockerfile
+          - name: web
+            dockerfile: apps/web/Dockerfile
+          - name: nginx
+            dockerfile: deploy/nginx.Dockerfile
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag de l'image
+        id: tag
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # NEXT_PUBLIC_API_URL est compilée dans le JavaScript du site : une image
+      # web construite sans elle pointerait vers http://localhost.
+      - name: URL de l'API (image web)
+        if: matrix.name == 'web' && env.PUBLISH == 'true'
+        env:
+          API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::error::Variable du dépôt NEXT_PUBLIC_API_URL manquante (Settings > Secrets and variables > Actions > Variables)."
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ env.PUBLISH == 'true' }}
+          load: ${{ env.PUBLISH != 'true' && matrix.name == 'nginx' }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost' }}
+          tags: |
+            ghcr.io/maksiime/voxelplace-${{ matrix.name }}:latest
+            ghcr.io/maksiime/voxelplace-${{ matrix.name }}:${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # Une configuration invalide ne doit jamais atteindre le serveur. Les
+      # upstreams sont remplacés par l'hôte local pour que « nginx -t » les résolve.
+      - name: Vérification de nginx.conf
+        if: matrix.name == 'nginx' && env.PUBLISH != 'true'
+        run: >-
+          docker run --rm --add-host voxelplace-web:127.0.0.1 --add-host voxelplace-api:127.0.0.1
+          ghcr.io/maksiime/voxelplace-nginx:latest nginx -t
+
+  # Après publication : la stack fixée sur ces images est écrite sur la branche
+  # `deploy`, que Portainer surveille. « [skip deploy] » dans le message du
+  # commit laisse le serveur tel quel.
+  release:
+    name: Branche deploy
+    needs: images
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && !contains(github.event.head_commit.message, '[skip deploy]')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stack sur la branche deploy
+        run: |
+          tag="sha-${GITHUB_SHA::7}"
+          stack="$RUNNER_TEMP/portainer-stack.yml"
+          sed -E "s#(ghcr.io/maksiime/voxelplace-[a-z]+):latest#\1:$tag#" deploy/portainer-stack.yml > "$stack"
+          test "$(grep -c ":$tag\$" "$stack")" -eq 3
+          ! grep -q 'ghcr.io/maksiime/voxelplace-[a-z]*:latest' "$stack"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin deploy; then
+            git checkout -B deploy FETCH_HEAD
+          else
+            git checkout --orphan deploy
+            git rm -rfq .
+          fi
+          cp "$stack" portainer-stack.yml
+          git add portainer-stack.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "deploy ${GITHUB_SHA::7}: ${{ github.event.head_commit.url }}"
+          git push origin deploy
