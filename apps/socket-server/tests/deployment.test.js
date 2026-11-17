@@ -115,9 +115,19 @@ describe('stack Portainer', () => {
   const stack = read('deploy/portainer-stack.yml')
   const service = (name) => stack.slice(stack.indexOf(`  ${name}:`), stack.indexOf('\n\n', stack.indexOf(`  ${name}:`)))
 
-  it('ne publie PostgreSQL que sur la loopback, et jamais Redis', () => {
+  it('ne publie PostgreSQL et nginx que sur la loopback, et jamais Redis', () => {
     assert.match(service('voxelplace-db'), /- "127\.0\.0\.1:5432:5432"/)
+    assert.match(service('voxelplace-nginx'), /- "127\.0\.0\.1:80:80"/)
     assert.doesNotMatch(service('voxelplace-redis'), /ports:/)
+    assert.equal([...stack.matchAll(/^\s*-\s*"(\d+):\d+"/gm)].length, 0, 'un port publié sur toutes les interfaces')
+  })
+
+  it('exige les secrets et les origines de l\'API, sans valeur par défaut', () => {
+    const api = service('voxelplace-api')
+    for (const name of ['JWT_SECRET', 'ADMIN_PASSWORD', 'BRIDGE_TOKEN', 'ALLOWED_ORIGINS']) {
+      assert.match(api, new RegExp(`${name}: "\\$\\{${name}:\\?`), `${name} doit être obligatoire dans la stack`)
+    }
+    assert.match(api, /TEST_USERNAMES: ""/, 'aucun compte exempté du cooldown en production')
   })
 
   it('réutilise les volumes de production, sans en créer de nouveaux', () => {
@@ -317,6 +327,18 @@ describe('configuration', () => {
     for (const name of ['JWT_SECRET', 'ADMIN_PASSWORD']) {
       assert.ok(example.includes(`${name}=`), `${name} doit figurer dans .env.example`)
     }
+  })
+
+  it('refuse de démarrer l\'API sans BRIDGE_TOKEN', () => {
+    const run = spawnSync(process.execPath, ['src/index.js'], {
+      cwd: join(ROOT, 'apps/socket-server'),
+      // Comme en production : sans transport Pino asynchrone, le message part avant la sortie.
+      env: { PATH: process.env.PATH, NODE_ENV: 'production', BRIDGE_TOKEN: ' ' },
+      encoding: 'utf8',
+      timeout: 15000,
+    })
+    assert.equal(run.status, 1, run.stderr)
+    assert.match(run.stdout + run.stderr, /BRIDGE_TOKEN manquant/)
   })
 
   it('garde .env hors du dépôt', () => {
