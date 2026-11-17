@@ -18,7 +18,7 @@ x-logging: &logging
 services:
 
   voxelplace-nginx:
-    image: ghcr.io/maksiime/voxelplace-nginx:sha-2c6e771
+    image: ghcr.io/maksiime/voxelplace-nginx:sha-1507cc8
     container_name: voxelplace-nginx
     restart: always
     ports:
@@ -51,7 +51,7 @@ services:
     logging: *logging
 
   voxelplace-api:
-    image: ghcr.io/maksiime/voxelplace-api:sha-2c6e771
+    image: ghcr.io/maksiime/voxelplace-api:sha-1507cc8
     container_name: voxelplace-api
     restart: always
     environment:
@@ -67,7 +67,7 @@ services:
     logging: *logging
 
   voxelplace-web:
-    image: ghcr.io/maksiime/voxelplace-web:sha-2c6e771
+    image: ghcr.io/maksiime/voxelplace-web:sha-1507cc8
     container_name: voxelplace-web
     restart: always
     environment:
@@ -77,9 +77,10 @@ services:
     logging: *logging
 
   voxelplace-redis:
-    # Version en service : ne jamais la faire redescendre (Redis refuse un RDB écrit
-    # par une version plus récente et quitte au démarrage).
-    image: redis:latest
+    # 8.10.3 (image Debian) en service au 17/11/2026 : rester en 8 au moins, ne
+    # jamais redescendre (Redis refuse un RDB écrit par une version plus récente
+    # et quitte au démarrage). Passer en 9 est un choix à faire à la main.
+    image: redis:8
     container_name: voxelplace-redis
     restart: always
     # Aucun port publié : Redis n'a pas de mot de passe.
