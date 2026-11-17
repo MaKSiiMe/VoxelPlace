@@ -6,8 +6,8 @@
 //
 //   · un COPY de Dockerfile pointant un fichier renommé
 //   · une CI qui teste sans construire, laissant partir un build cassé
-//   · un script de déploiement sans set -e, qui redémarre l'image précédente
-//     et se déclare en succès
+//   · un déploiement qui redémarrait l'image précédente après un build raté
+//     et se déclarait en succès (plus de build sur le serveur depuis le 17/11)
 //   · une base de données publiée sur toutes les interfaces
 //   · une image Redis rétrogradée, incapable de relire ses propres données
 
@@ -158,50 +158,34 @@ describe('stack Portainer', () => {
 })
 
 describe('pipeline CI/CD', () => {
-  const workflow = read('.github/workflows/deploy.yml')
+  const workflow = read('.github/workflows/ci.yml')
+  const job = (name) => {
+    const start = workflow.indexOf(`\n  ${name}:\n`)
+    assert.notEqual(start, -1, `job ${name} introuvable`)
+    const next = workflow.slice(start + 1).search(/\n  [\w-]+:\n/)
+    return next === -1 ? workflow.slice(start) : workflow.slice(start, start + 1 + next)
+  }
 
-  it('garde le script de déploiement dans un seul bloc YAML', () => {
-    // Une suggestion de revue acceptée a désindenté une ligne du script. Dans
-    // un bloc « script: | », une ligne moins indentée clôt le bloc : le
-    // fichier est devenu invalide, GitHub n'a lancé aucun job — ni tests, ni
-    // déploiement — et le reste du script aurait été perdu.
-    const lines   = workflow.split('\n')
-    const start   = lines.findIndex(l => /^\s*script: \|\s*$/.test(l))
-    assert.notEqual(start, -1, 'bloc « script: | » introuvable')
-    const baseIndent = lines[start].search(/\S/)
-
-    const block = []
-    for (const line of lines.slice(start + 1)) {
-      if (line.trim() === '') { block.push(line); continue }
-      if (line.search(/\S/) <= baseIndent) break
-      block.push(line)
-    }
-    const script = block.join('\n')
-    for (const expected of ['git reset --hard origin/main', 'docker compose build', 'docker image prune', 'Plugin Minecraft']) {
-      assert.ok(script.includes(expected),
-        `« ${expected} » est hors du bloc script : une ligne a probablement perdu son indentation`)
-    }
-  })
-
-  it('démarre tous les services, pas seulement ceux reconstruits', () => {
-    const script = workflow.slice(workflow.indexOf('script: |'))
-      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
-    assert.match(script, /docker compose up -d\s*$/m,
-      'restreindre « up -d » à quelques services laisse nginx arrêté s\'il ne tournait pas')
+  it('déploie seulement par la CI, sans accès SSH au serveur', () => {
+    assert.ok(!existsSync(join(ROOT, '.github/workflows/deploy.yml')),
+      'l\'ancien déploiement par SSH ne doit pas revenir')
+    assert.doesNotMatch(workflow, /ssh-action|tailscale\/github-action|secrets\.SSH_/)
   })
 
   it('construit le frontend, et pas seulement ses tests', () => {
     // Les tests ne type-checkent pas : sans build, une erreur TypeScript passe
-    // la CI et ne casse qu'au moment du docker build, sur le serveur.
+    // la CI et ne casse qu'à la construction de l'image.
     assert.match(workflow, /npm run build --workspace=apps\/web/,
-      'la CI doit construire le frontend avant de déployer')
+      'la CI doit construire le frontend avant de publier')
   })
 
-  it('bloque le déploiement si le lint ou les tests échouent', () => {
-    const needs = workflow.match(/needs:\s*\[([^\]]+)\]/)?.[1] ?? ''
-    for (const job of ['lint', 'test-backend', 'test-frontend']) {
-      assert.ok(needs.includes(job), `le job deploy doit dépendre de ${job}`)
+  it('ne publie les images que si le lint et les tests passent', () => {
+    const needs = job('images').match(/needs:\s*\[([^\]]+)\]/)?.[1] ?? ''
+    for (const name of ['lint', 'test-backend', 'test-frontend']) {
+      assert.ok(needs.includes(name), `le job images doit dépendre de ${name}`)
     }
+    assert.match(job('release'), /needs:\s*images/,
+      'la branche deploy ne doit changer qu\'une fois les images publiées')
   })
 
   it('exécute le lint du backend', () => {
@@ -215,38 +199,9 @@ describe('pipeline CI/CD', () => {
     assert.match(workflow, /TEST_DATABASE_URL/)
   })
 
-  it('interrompt le script de déploiement à la première erreur', () => {
-    const script = workflow.slice(workflow.indexOf('script: |'))
-    assert.match(script, /set -e/,
-      'sans set -e, un build raté laisse redémarrer l\'image précédente en silence')
-  })
-
-  it('applique les changements de nginx.conf, que « up -d » ne recrée pas', () => {
-    // nginx.conf est monté en volume : modifier le fichier ne change pas la
-    // définition du service, donc « docker compose up -d » laisse le conteneur
-    // tourner avec l'ancienne configuration. Le correctif de /health est ainsi
-    // resté sans effet.
-    const compose = read('docker-compose.yml')
-    if (!/nginx\.conf:\/etc\/nginx/.test(compose)) return  // plus monté : rien à recharger
-
-    const script = workflow.slice(workflow.indexOf('script: |'))
-      .split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
-    assert.match(script, /--force-recreate voxelplace-nginx|restart voxelplace-nginx|nginx -s reload/,
-      'le déploiement doit recharger nginx quand sa configuration change')
-    assert.match(script, /nginx -t/,
-      'la configuration doit être validée avant d\'être appliquée')
-  })
-
-  it('ne dépend pas de sudo, indisponible dans un shell SSH sans terminal', () => {
-    const script = workflow.slice(workflow.indexOf('script: |'))
-    // Les commentaires du script sont exclus : ils expliquent justement
-    // pourquoi sudo a été retiré.
-    const code = script
-      .split('\n')
-      .filter(line => !line.trim().startsWith('#'))
-      .join('\n')
-    assert.ok(!/\bsudo\b/.test(code),
-      'sudo ne peut pas demander de mot de passe ici : utiliser docker cp')
+  it('valide nginx.conf avant de publier l\'image nginx', () => {
+    assert.match(job('images'), /nginx -t/,
+      'une configuration invalide ne doit jamais atteindre le serveur')
   })
 })
 
@@ -287,7 +242,7 @@ describe('versions Node', () => {
   it('teste et déploie sur la même version majeure', () => {
     // La CI validait sur Node 22 pendant que la production tournait sur Node 20 :
     // du code vérifié sur une version partait s'exécuter sur une autre.
-    const workflow = read('.github/workflows/deploy.yml')
+    const workflow = read('.github/workflows/ci.yml')
     const ciVersions = new Set(
       [...workflow.matchAll(/node-version:\s*'?(\d+)/g)].map(m => m[1])
     )

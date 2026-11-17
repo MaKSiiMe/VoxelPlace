@@ -6,7 +6,7 @@
 
 *Projet de fin d'année — Holberton School · Validation RNCP 6 (CDA)*
 
-[![Deploy](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/deploy.yml/badge.svg)](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/deploy.yml)
+[![CI](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/ci.yml/badge.svg)](https://github.com/MaKSiiMe/VoxelPlace/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-298%20passing-brightgreen)](#tests)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -76,7 +76,7 @@ graph TB
 | **Tailscale Funnel** | Expose le port 80 (Nginx) en HTTPS/WSS public — joueurs web et plugin Minecraft y transitent |
 | **Playit.gg** | Expose le port 25565 pour les joueurs Minecraft — même principe, sans IP fixe |
 | **Nginx** | Unique point d'entrée Docker — route `/api/` et `/socket.io/` vers `voxelplace-api`, `/` vers `voxelplace-web` |
-| **Tailscale mesh** | Réseau privé CI/CD — déploiement SSH depuis GitHub Actions |
+| **Portainer** | Déploie la stack `portainer-stack.yml` de la branche `deploy`, avec les images publiées sur ghcr par la CI |
 
 ---
 
@@ -398,18 +398,19 @@ identifiant utilisé sans import.
 ### Pipeline GitHub Actions
 
 ```
-git push main  (ou déclenchement manuel via workflow_dispatch)
+pull request ou push sur main
   → job lint          : ESLint sur le backend (bloquant)
-  → job test-backend  : Node 22 + service PostgreSQL 16 — 245 tests
-  → job test-frontend : Node 22 — 53 tests + build Next.js (type-check)
-  → job deploy        : Tailscale VPN → SSH → git reset --hard
-                        → docker compose build voxelplace-api voxelplace-web
-                        → docker compose up -d
-                        → si apps/game-bridges/minecraft/ a changé :
-                            mvn clean package → copie VoxelPlace.jar → restart minecraft-paper
+  → job test-backend  : Node 22 + service PostgreSQL 16
+  → job test-frontend : Node 22 + build Next.js (type-check)
+  → job images        : construit voxelplace-api, voxelplace-web, voxelplace-nginx
+                        (nginx -t sur la configuration) ; sur main, publiées sur
+                        ghcr.io/maksiime/voxelplace-* (tags sha-<commit> et latest)
+  → job release (main): écrit deploy/portainer-stack.yml, fixé sur ces tags,
+                        sur la branche deploy
+Portainer (polling de la branche deploy) → télécharge les images → redémarre la stack
 ```
 
-Le déploiement est bloqué si les tests échouent. Le plugin Minecraft n'est recompilé et redéployé que si ses sources ont effectivement changé.
+Rien n'est publié si le lint ou les tests échouent. Le serveur ne compile plus rien et GitHub n'y a aucun accès. Pour revenir en arrière, il suffit de remettre l'ancien tag sur la branche `deploy`. « [skip deploy] » dans le message d'un commit laisse le serveur tel quel. Le plugin Minecraft se construit à la main (`mvn -f apps/game-bridges/minecraft/pom.xml package`).
 
 ### HTTPS
 
@@ -528,7 +529,7 @@ VoxelPlace/
 ├── docs/
 │   ├── uml/                        # Diagrammes UML (Mermaid)
 │   └── skill-tree.md               # Arbre de compétences (27 nœuds)
-├── .github/workflows/deploy.yml    # CI/CD — test + deploy SSH
+├── .github/workflows/ci.yml        # CI/CD — tests, images ghcr, branche deploy
 ├── docker-compose.yml
 ├── turbo.json
 └── package.json
