@@ -42,9 +42,10 @@ services:
       POSTGRES_USER: voxelplace
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}"
     volumes:
+      # Base existante : init.sql (schéma d'une base vide) n'est plus monté. Pour
+      # repartir de zéro, restaurer une sauvegarde (scripts/backup-db.sh) ou
+      # appliquer apps/socket-server/db/init.sql avec psql.
       - postgres_data:/var/lib/postgresql/data
-      # Lu seulement à la création d'une base vide.
-      - /opt/voxelplace/apps/socket-server/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       # Loopback seulement : joignable depuis l'hôte (scripts/backup-db.sh), pas du réseau.
       - "127.0.0.1:5432:5432"

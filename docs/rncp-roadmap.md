@@ -68,7 +68,7 @@
 |---|---------|--------|-------|
 | 3.1 | Docker (conteneurisation) | ✅ | 4 services dans `docker-compose.yml` : `voxelplace-web`, `voxelplace-api`, `voxelplace-db`, `voxelplace-nginx` (reverse proxy ajouté) |
 | 3.2 | GitFlow (branches feature/develop/main) | ✅ | Branches `feature/backend`, `feature/frontend`, `feature/game-integrations` mergées directement sur `main` — pas de branche `develop`, mais suffisant pour un projet solo (décision assumée, pas de surcharge de process inutile) |
-| 3.3 | CI/CD | ✅ | GitHub Actions dans `.github/workflows/deploy.yml` — SSH via Tailscale après push sur `main` |
+| 3.3 | CI/CD | ✅ | GitHub Actions dans `.github/workflows/ci.yml` — images publiées sur ghcr, stack Portainer sur la branche `deploy` |
 | 3.4 | Tests unitaires | ✅ | Suite `node:test` dans `apps/socket-server/tests/` (auth, grid, validation) |
 | 3.5 | Captures d'écran tests pour rapport | ❌ | À faire : `npx turbo run test --filter=@voxelplace/socket-server` puis screenshot terminal |
 
