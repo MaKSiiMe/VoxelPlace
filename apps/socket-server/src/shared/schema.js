@@ -182,6 +182,71 @@ export const SCHEMA_MIGRATIONS = [
       `)
     },
   },
+  {
+    // Derniers écarts de l'ancien schéma, sur les tables que la première
+    // migration n'avait corrigées que là où le code cassait : types, NOT NULL,
+    // et l'index de shared_zones. Après elle, la prod est identique à init.sql.
+    id: '2026-11-align-last-tables',
+    async up(client) {
+      // 1. Données qu'aucune règle sûre ne peut corriger : refus avec décompte
+      const blocking = {
+        'reports : reporter > 32 caractères':            ['reports', 'length(reporter) > 32'],
+        'reports : target_type NULL ou > 10 caractères': ['reports', 'target_type IS NULL OR length(target_type) > 10'],
+        'reports : target_username > 32 caractères':     ['reports', 'length(target_username) > 32'],
+        'reports : x ou y hors smallint':                ['reports', 'x NOT BETWEEN -32768 AND 32767 OR y NOT BETWEEN -32768 AND 32767'],
+        'reports : reason > 256 caractères':             ['reports', 'length(reason) > 256'],
+        'reports : created_at NULL':                     ['reports', 'created_at IS NULL'],
+        'bans : username > 32 caractères':               ['bans', 'length(username) > 32'],
+        'bans : reason > 256 caractères':                ['bans', 'length(reason) > 256'],
+        'bans : banned_by > 32 caractères':              ['bans', 'length(banned_by) > 32'],
+        'bans : banned_at NULL':                         ['bans', 'banned_at IS NULL'],
+        'pixel_messages : username > 32 caractères':     ['pixel_messages', 'length(username) > 32'],
+        'pixel_messages : message > 500 caractères':     ['pixel_messages', 'length(message) > 500'],
+        'pixel_messages : created_at NULL':              ['pixel_messages', 'created_at IS NULL'],
+      }
+      const problems = []
+      for (const [label, [table, condition]] of Object.entries(blocking)) {
+        const n = await countWhere(client, table, condition)
+        if (n > 0) problems.push(`${label} (${n} ligne${n > 1 ? 's' : ''})`)
+      }
+      if (problems.length > 0) {
+        throw new Error(`données incompatibles avec init.sql, à corriger à la main : ${problems.join(' ; ')}`)
+      }
+
+      // 2. Heures en UTC, comme pour les autres tables
+      await toUtcTimestamp(client, 'reports', 'created_at')
+      await toUtcTimestamp(client, 'bans', 'banned_at')
+      await toUtcTimestamp(client, 'bans', 'expires_at')
+      await toUtcTimestamp(client, 'pixel_messages', 'created_at')
+
+      // 3. Types, contraintes et index d'init.sql (sans effet sur une base neuve)
+      await client.query(`
+        ALTER TABLE reports
+          ALTER COLUMN reporter        TYPE VARCHAR(32),
+          ALTER COLUMN target_type     TYPE VARCHAR(10),
+          ALTER COLUMN target_type     SET NOT NULL,
+          ALTER COLUMN target_username TYPE VARCHAR(32),
+          ALTER COLUMN x               TYPE SMALLINT,
+          ALTER COLUMN y               TYPE SMALLINT,
+          ALTER COLUMN reason          TYPE VARCHAR(256),
+          ALTER COLUMN created_at      SET DEFAULT NOW(),
+          ALTER COLUMN created_at      SET NOT NULL;
+        ALTER TABLE bans
+          ALTER COLUMN username  TYPE VARCHAR(32),
+          ALTER COLUMN reason    TYPE VARCHAR(256),
+          ALTER COLUMN banned_by TYPE VARCHAR(32),
+          ALTER COLUMN banned_at SET DEFAULT NOW(),
+          ALTER COLUMN banned_at SET NOT NULL;
+        ALTER TABLE pixel_messages
+          ALTER COLUMN username   TYPE VARCHAR(32),
+          ALTER COLUMN username   DROP NOT NULL,
+          ALTER COLUMN message    TYPE VARCHAR(500),
+          ALTER COLUMN created_at SET DEFAULT NOW(),
+          ALTER COLUMN created_at SET NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_sz_created_at ON shared_zones (created_at);
+      `)
+    },
+  },
 ]
 
 /**
