@@ -447,7 +447,7 @@ cp apps/socket-server/.env.example apps/socket-server/.env
 PORT=3001
 REDIS_URL=redis://127.0.0.1:6379
 DATABASE_URL=postgresql://voxelplace:changeme@localhost:5432/voxelplace
-ADMIN_PASSWORD=changeme
+ADMIN_PASSWORD=                                # 16 caractères min., pas « changeme » : openssl rand -base64 24
 JWT_SECRET=une_cle_generee_avec_openssl_rand_hex_32
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 BRIDGE_TOKEN=secret_partage_avec_le_plugin   # openssl rand -hex 32
