@@ -25,6 +25,7 @@ import { getStats } from './features/analytics/stats.js'
 import { healthRoutes } from './features/health/routes.js'
 import { pool, connectWithRetry } from './shared/db.js'
 import { constantTimeEqual } from './shared/crypto.js'
+import { adminPasswordProblem } from './features/admin/password-policy.js'
 import { logger } from './shared/logger.js'
 import { checkRateLimit as checkAuthRateLimit } from './features/auth/rate-limit.js'
 import { PALETTE_HEX as COLORS } from './shared/palette.js'
@@ -46,6 +47,13 @@ const JWT_SECRET      = process.env.JWT_SECRET || 'dev_secret_change_in_prod'
 const BRIDGE_TOKEN    = (process.env.BRIDGE_TOKEN || '').trim()
 if (!BRIDGE_TOKEN) {
   logger.fatal('BRIDGE_TOKEN manquant : générer un secret (openssl rand -hex 32), le donner à l\'API et au plugin (bridge-token dans son config.yml)')
+  process.exit(1)
+}
+// Même logique pour le mot de passe d'administration : une valeur d'exemple
+// ouvrirait un JWT superadmin à n'importe qui.
+const adminPasswordError = adminPasswordProblem(process.env.ADMIN_PASSWORD)
+if (adminPasswordError) {
+  logger.fatal(`${adminPasswordError} : générer un secret (openssl rand -base64 24) et le donner à l'API`)
   process.exit(1)
 }
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
