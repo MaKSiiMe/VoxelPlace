@@ -26,12 +26,13 @@ const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : f
 
 const adminAuth = { authorization: `Bearer ${jwt.sign({ role: 'admin', username: 'Modo' }, TEST_JWT_SECRET, { expiresIn: '1h' })}` }
 
-const TABLES = ['reports', 'bans', 'pixel_messages']
+const TABLES = ['reports', 'bans', 'pixel_messages', 'moderation_logs', 'user_stats', 'user_color_counts', 'user_unlocks']
+const REMAINING = ['moderation_logs', 'user_stats', 'user_color_counts', 'user_unlocks']
 
 /** Structure observable des tables migrées : colonnes, nullabilité, clés, index. */
 async function structure(pool) {
   const columns = await pool.query(`
-    SELECT table_name, column_name, is_nullable
+    SELECT table_name, column_name, is_nullable, data_type, character_maximum_length, column_default
     FROM information_schema.columns
     WHERE table_schema = current_schema() AND table_name = ANY($1)
     ORDER BY table_name, column_name
@@ -213,5 +214,91 @@ describe('runSchemaMigrations', { skip: skip() }, () => {
     await Promise.all([runSchemaMigrations(db.pool, slow), runSchemaMigrations(db.pool, slow)])
     assert.equal(calls, 1, 'la seconde instance voit la migration déjà faite')
     assert.equal(maxRunning, 1)
+  })
+})
+
+// ── Seconde migration : les quatre autres tables de l'ancien schéma ──────────
+
+/** Les quatre tables, telles que relevées en production le 18/11/2026. */
+async function installLegacyRemaining(pool) {
+  await pool.query(`
+    DROP TABLE moderation_logs, user_stats, user_color_counts, user_unlocks;
+    CREATE TABLE moderation_logs (
+      id SERIAL PRIMARY KEY, action TEXT NOT NULL, target TEXT, admin TEXT,
+      reason TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE user_stats (
+      username TEXT PRIMARY KEY,
+      pixels_placed INTEGER DEFAULT 0, pixels_lost INTEGER DEFAULT 0, pixels_overwritten INTEGER DEFAULT 0,
+      zones_visited JSONB DEFAULT '[]'::jsonb, days_played JSONB DEFAULT '[]'::jsonb
+    );
+    CREATE TABLE user_color_counts (
+      username TEXT NOT NULL, color_id INTEGER NOT NULL, count INTEGER DEFAULT 0,
+      PRIMARY KEY (username, color_id)
+    );
+    CREATE TABLE user_unlocks (
+      username TEXT NOT NULL, node_id TEXT NOT NULL, unlocked_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (username, node_id)
+    );
+  `)
+}
+
+const MIGRATION_1 = SCHEMA_MIGRATIONS.filter(m => m.id === '2026-11-align-moderation-schema')
+const MIGRATION_2 = SCHEMA_MIGRATIONS.filter(m => m.id === '2026-11-align-remaining-tables')
+
+describe('migration 2026-11-align-remaining-tables', { skip: skip() }, () => {
+  let expected
+
+  before(async () => {
+    if (db.skipped) return
+    await truncateAll(db.pool)
+    expected = (await structure(db.pool)).columns.filter(c => REMAINING.includes(c.table_name))
+    await installLegacyRemaining(db.pool)
+  })
+
+  it('refuse des données qu\'elle ne peut pas corriger sans risque, et dit lesquelles', async () => {
+    await truncateAll(db.pool)
+    await runSchemaMigrations(db.pool, MIGRATION_1)
+    await db.pool.query(`INSERT INTO user_unlocks (username, node_id) VALUES ('Alice', $1)`, ['n'.repeat(70)])
+    await db.pool.query(`INSERT INTO moderation_logs (action) VALUES ('ban')`)   // admin NULL
+
+    await assert.rejects(runSchemaMigrations(db.pool, MIGRATION_2), (err) => {
+      assert.ok(err instanceof SchemaMigrationError)
+      assert.match(err.message, /user_unlocks : node_id > 64 caractères \(1 ligne\)/)
+      assert.match(err.message, /moderation_logs : admin NULL ou > 32 caractères \(1 ligne\)/)
+      return true
+    })
+    const type = await db.pool.query(`
+      SELECT data_type FROM information_schema.columns WHERE table_name = 'user_unlocks' AND column_name = 'node_id'
+    `)
+    assert.equal(type.rows[0].data_type, 'text', 'rien n\'a été modifié')
+  })
+
+  it('aligne les quatre tables sur init.sql en conservant les données et les heures', async () => {
+    await truncateAll(db.pool)
+    await runSchemaMigrations(db.pool, MIGRATION_1)
+    await db.pool.query(`
+      INSERT INTO moderation_logs (action, target, admin, created_at) VALUES ('ban', 'Bob', 'Modo', '2026-11-18 10:00:00+00');
+      INSERT INTO user_stats (username, pixels_placed, pixels_lost, pixels_overwritten, zones_visited, days_played)
+        VALUES ('Alice', 12, NULL, 3, '["a"]', NULL);
+      INSERT INTO user_color_counts (username, color_id, count) VALUES ('Alice', 6, 4), ('Alice', 7, NULL);
+      INSERT INTO user_unlocks (username, node_id, unlocked_at) VALUES ('Alice', 'color:6', '2026-11-18 09:30:00+00');
+    `)
+
+    await runSchemaMigrations(db.pool, MIGRATION_2)
+
+    const after = (await structure(db.pool)).columns.filter(c => REMAINING.includes(c.table_name))
+    assert.deepEqual(after, expected, 'types, longueurs, nullabilité et défauts identiques à init.sql')
+
+    const read = async (sql) => (await db.pool.query(sql)).rows
+    assert.deepEqual(await read(`SELECT to_char(created_at, 'YYYY-MM-DD HH24:MI') AS t, admin FROM moderation_logs`),
+      [{ t: '2026-11-18 10:00', admin: 'Modo' }], 'heure UTC conservée')
+    assert.deepEqual(await read(`SELECT to_char(unlocked_at, 'YYYY-MM-DD HH24:MI') AS t FROM user_unlocks`),
+      [{ t: '2026-11-18 09:30' }])
+    assert.deepEqual(await read(`SELECT pixels_placed, pixels_lost, pixels_overwritten, zones_visited, days_played FROM user_stats`),
+      [{ pixels_placed: 12, pixels_lost: 0, pixels_overwritten: 3, zones_visited: ['a'], days_played: [] }],
+      'NULL remis à la valeur par défaut, le reste intact')
+    assert.deepEqual(await read(`SELECT color_id, count FROM user_color_counts ORDER BY color_id`),
+      [{ color_id: 6, count: 4 }, { color_id: 7, count: 0 }])
   })
 })
