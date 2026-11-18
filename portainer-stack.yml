@@ -21,7 +21,7 @@ x-logging: &logging
 services:
 
   voxelplace-nginx:
-    image: ghcr.io/maksiime/voxelplace-nginx:sha-b42fbca
+    image: ghcr.io/maksiime/voxelplace-nginx:sha-e944424
     container_name: voxelplace-nginx
     restart: always
     ports:
@@ -57,7 +57,7 @@ services:
     logging: *logging
 
   voxelplace-api:
-    image: ghcr.io/maksiime/voxelplace-api:sha-b42fbca
+    image: ghcr.io/maksiime/voxelplace-api:sha-e944424
     container_name: voxelplace-api
     restart: always
     environment:
@@ -76,7 +76,7 @@ services:
     logging: *logging
 
   voxelplace-web:
-    image: ghcr.io/maksiime/voxelplace-web:sha-b42fbca
+    image: ghcr.io/maksiime/voxelplace-web:sha-e944424
     container_name: voxelplace-web
     restart: always
     environment:
