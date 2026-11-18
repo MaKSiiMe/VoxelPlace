@@ -19,7 +19,7 @@ import { FakeRedis } from './helpers/redis-fake.js'
 import { reportRoutes } from '../src/features/report/routes.js'
 import { adminRoutes } from '../src/features/admin/routes.js'
 import { setPixel, GRID_SIZE } from '../src/features/canvas/grid.js'
-import { runSchemaMigrations, SCHEMA_MIGRATIONS } from '../src/shared/schema.js'
+import { runSchemaMigrations, SCHEMA_MIGRATIONS, SchemaMigrationError } from '../src/shared/schema.js'
 
 let db, app
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
@@ -167,5 +167,51 @@ describe('runSchemaMigrations', { skip: skip() }, () => {
     await runSchemaMigrations(db.pool, probe)
     await runSchemaMigrations(db.pool, probe)
     assert.equal(calls, 1)
+  })
+
+  it('annule en entier une migration en échec, s\'arrête là et explique pourquoi', async () => {
+    let laterRan = false
+    const migrations = [
+      { id: 'test-ko', up: async (client) => {
+        await client.query('ALTER TABLE reports ADD COLUMN demi_migration INT')
+        await client.query('SELECT * FROM table_absente')
+      } },
+      { id: 'test-apres-ko', up: async () => { laterRan = true } },
+    ]
+
+    await assert.rejects(runSchemaMigrations(db.pool, migrations), (err) => {
+      assert.ok(err instanceof SchemaMigrationError)
+      assert.match(err.message, /« test-ko » en échec, annulée : base inchangée, API arrêtée/)
+      assert.match(err.message, /table_absente/, 'la cause PostgreSQL figure dans le message')
+      return true
+    })
+
+    const column = await db.pool.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name = 'reports' AND column_name = 'demi_migration'
+    `)
+    assert.equal(column.rowCount, 0, 'le DDL de la migration échouée est annulé')
+    const noted = await db.pool.query(`SELECT id FROM schema_migrations WHERE id LIKE 'test-%ko'`)
+    assert.equal(noted.rowCount, 0, 'une migration échouée n\'est pas notée comme faite')
+    assert.equal(laterRan, false, 'les migrations suivantes ne tournent pas')
+
+    // Le pool reste utilisable, et le verrou a été rendu
+    const lock = await db.pool.query(`SELECT pg_try_advisory_lock(hashtext('voxelplace:schema-migrations')) AS ok`)
+    assert.equal(lock.rows[0].ok, true)
+    await db.pool.query(`SELECT pg_advisory_unlock_all()`)
+  })
+
+  it('fait attendre un second démarrage simultané au lieu de migrer deux fois', async () => {
+    let running = 0, maxRunning = 0, calls = 0
+    const slow = [{ id: 'test-concurrent', up: async () => {
+      calls++
+      running++
+      maxRunning = Math.max(maxRunning, running)
+      await new Promise(r => setTimeout(r, 100))
+      running--
+    } }]
+
+    await Promise.all([runSchemaMigrations(db.pool, slow), runSchemaMigrations(db.pool, slow)])
+    assert.equal(calls, 1, 'la seconde instance voit la migration déjà faite')
+    assert.equal(maxRunning, 1)
   })
 })
