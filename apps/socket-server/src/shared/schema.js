@@ -28,6 +28,34 @@ const LOCK_NAME = 'voxelplace:schema-migrations'
 
 export class SchemaMigrationError extends Error {}
 
+/** Type d'une colonne, tel que PostgreSQL le nomme (information_schema). */
+async function columnType(client, table, column) {
+  const { rows } = await client.query(`
+    SELECT data_type FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2
+  `, [table, column])
+  return rows[0]?.data_type
+}
+
+/**
+ * timestamptz → timestamp, en heure UTC. Le code écrit NOW() dans des colonnes
+ * TIMESTAMP : la valeur stockée est l'heure UTC (fuseau de la base). On garde
+ * cette convention, sans dépendre du fuseau de la session qui migre. Une
+ * colonne déjà en timestamp n'est pas touchée.
+ */
+async function toUtcTimestamp(client, table, column) {
+  if (await columnType(client, table, column) !== 'timestamp with time zone') return
+  await client.query(
+    `ALTER TABLE ${table} ALTER COLUMN ${column} TYPE TIMESTAMP USING ${column} AT TIME ZONE 'UTC'`
+  )
+}
+
+/** Nombre de lignes de `table` qui vérifient `condition`. */
+async function countWhere(client, table, condition) {
+  const { rows } = await client.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${condition}`)
+  return rows[0].n
+}
+
 export const SCHEMA_MIGRATIONS = [
   {
     // Bases créées avant le schéma actuel de la modération (prod jusqu'en
@@ -71,6 +99,87 @@ export const SCHEMA_MIGRATIONS = [
           ALTER TABLE bans ADD PRIMARY KEY (username);
         `)
       }
+    },
+  },
+  {
+    // Les quatre autres tables créées par l'ancien schéma : text au lieu de
+    // varchar(n), timestamptz au lieu de timestamp, NOT NULL manquants. Rien
+    // n'y cassait, mais la prod était le seul schéma que les tests ne voyaient
+    // pas, et un compteur NULL avale ses incréments en silence (NULL + 1).
+    id: '2026-11-align-remaining-tables',
+    async up(client) {
+      // 1. Données qu'aucune règle sûre ne peut corriger : on refuse, avec le
+      //    décompte, plutôt que de tronquer un pseudo ou d'inventer une date.
+      const blocking = {
+        'moderation_logs : action NULL ou > 16 caractères':  ['moderation_logs', 'action IS NULL OR length(action) > 16'],
+        'moderation_logs : target > 32 caractères':          ['moderation_logs', 'length(target) > 32'],
+        'moderation_logs : admin NULL ou > 32 caractères':   ['moderation_logs', 'admin IS NULL OR length(admin) > 32'],
+        'moderation_logs : reason > 256 caractères':         ['moderation_logs', 'length(reason) > 256'],
+        'moderation_logs : created_at NULL':                 ['moderation_logs', 'created_at IS NULL'],
+        'user_stats : username > 32 caractères':             ['user_stats',        'length(username) > 32'],
+        'user_color_counts : username > 32 caractères':      ['user_color_counts', 'length(username) > 32'],
+        'user_color_counts : color_id hors smallint':        ['user_color_counts', 'color_id NOT BETWEEN -32768 AND 32767'],
+        'user_unlocks : username > 32 caractères':           ['user_unlocks', 'length(username) > 32'],
+        'user_unlocks : node_id > 64 caractères':            ['user_unlocks', 'length(node_id) > 64'],
+        'user_unlocks : unlocked_at NULL':                   ['user_unlocks', 'unlocked_at IS NULL'],
+      }
+      const problems = []
+      for (const [label, [table, condition]] of Object.entries(blocking)) {
+        const n = await countWhere(client, table, condition)
+        if (n > 0) problems.push(`${label} (${n} ligne${n > 1 ? 's' : ''})`)
+      }
+      if (problems.length > 0) {
+        throw new Error(`données incompatibles avec init.sql, à corriger à la main : ${problems.join(' ; ')}`)
+      }
+
+      // 2. NULL qui a un sens évident : un compteur absent vaut 0, une liste
+      //    absente est vide (ce sont les valeurs par défaut des colonnes).
+      const filled = await client.query(`
+        UPDATE user_stats SET
+          pixels_placed      = COALESCE(pixels_placed, 0),
+          pixels_lost        = COALESCE(pixels_lost, 0),
+          pixels_overwritten = COALESCE(pixels_overwritten, 0),
+          zones_visited      = COALESCE(zones_visited, '[]'),
+          days_played        = COALESCE(days_played, '[]')
+        WHERE pixels_placed IS NULL OR pixels_lost IS NULL OR pixels_overwritten IS NULL
+           OR zones_visited IS NULL OR days_played IS NULL
+      `)
+      const counts = await client.query('UPDATE user_color_counts SET count = 0 WHERE count IS NULL')
+      if (filled.rowCount + counts.rowCount > 0) {
+        logger.warn({ user_stats: filled.rowCount, user_color_counts: counts.rowCount },
+          '[DB] Compteurs NULL remis à leur valeur par défaut (0 ou [])')
+      }
+
+      // 3. Types et contraintes d'init.sql. Sur une base créée par init.sql,
+      //    chaque instruction est sans effet.
+      await toUtcTimestamp(client, 'moderation_logs', 'created_at')
+      await toUtcTimestamp(client, 'user_unlocks', 'unlocked_at')
+      await client.query(`
+        ALTER TABLE moderation_logs
+          ALTER COLUMN action     TYPE VARCHAR(16),
+          ALTER COLUMN target     TYPE VARCHAR(32),
+          ALTER COLUMN admin      TYPE VARCHAR(32),
+          ALTER COLUMN admin      SET NOT NULL,
+          ALTER COLUMN reason     TYPE VARCHAR(256),
+          ALTER COLUMN created_at SET DEFAULT NOW(),
+          ALTER COLUMN created_at SET NOT NULL;
+        ALTER TABLE user_stats
+          ALTER COLUMN username           TYPE VARCHAR(32),
+          ALTER COLUMN pixels_placed      SET NOT NULL,
+          ALTER COLUMN pixels_lost        SET NOT NULL,
+          ALTER COLUMN pixels_overwritten SET NOT NULL,
+          ALTER COLUMN zones_visited      SET NOT NULL,
+          ALTER COLUMN days_played        SET NOT NULL;
+        ALTER TABLE user_color_counts
+          ALTER COLUMN username TYPE VARCHAR(32),
+          ALTER COLUMN color_id TYPE SMALLINT,
+          ALTER COLUMN count    SET NOT NULL;
+        ALTER TABLE user_unlocks
+          ALTER COLUMN username    TYPE VARCHAR(32),
+          ALTER COLUMN node_id     TYPE VARCHAR(64),
+          ALTER COLUMN unlocked_at SET DEFAULT NOW(),
+          ALTER COLUMN unlocked_at SET NOT NULL;
+      `)
     },
   },
 ]
