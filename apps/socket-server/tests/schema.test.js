@@ -21,12 +21,12 @@ import { adminRoutes } from '../src/features/admin/routes.js'
 import { setPixel, GRID_SIZE } from '../src/features/canvas/grid.js'
 import { runSchemaMigrations, SCHEMA_MIGRATIONS, SchemaMigrationError } from '../src/shared/schema.js'
 
-let db, app
+let db, app, initSchema
 const skip = () => db?.skipped ? 'PostgreSQL indisponible sur cette machine' : false
 
 const adminAuth = { authorization: `Bearer ${jwt.sign({ role: 'admin', username: 'Modo' }, TEST_JWT_SECRET, { expiresIn: '1h' })}` }
 
-const TABLES = ['reports', 'bans', 'pixel_messages', 'moderation_logs', 'user_stats', 'user_color_counts', 'user_unlocks']
+const TABLES = ['reports', 'bans', 'pixel_messages', 'moderation_logs', 'user_stats', 'user_color_counts', 'user_unlocks', 'shared_zones']
 const REMAINING = ['moderation_logs', 'user_stats', 'user_color_counts', 'user_unlocks']
 
 /** Structure observable des tables migrées : colonnes, nullabilité, clés, index. */
@@ -80,6 +80,8 @@ async function installLegacySchema(pool) {
 before(async () => {
   db = await startTestDatabase()
   if (db.skipped) return
+  // Empreinte du schéma d'init.sql, avant que les tests ne remplacent des tables
+  initSchema = await structure(db.pool)
   app = await buildTestApp([reportRoutes, adminRoutes], {
     pool: db.pool, redis: new FakeRedis(),
     io: { emit() {}, to: () => ({ emit() {} }), sockets: { sockets: { size: 0, get: () => null } } },
@@ -245,6 +247,7 @@ async function installLegacyRemaining(pool) {
 
 const MIGRATION_1 = SCHEMA_MIGRATIONS.filter(m => m.id === '2026-11-align-moderation-schema')
 const MIGRATION_2 = SCHEMA_MIGRATIONS.filter(m => m.id === '2026-11-align-remaining-tables')
+const MIGRATION_3 = SCHEMA_MIGRATIONS.filter(m => m.id === '2026-11-align-last-tables')
 
 describe('migration 2026-11-align-remaining-tables', { skip: skip() }, () => {
   let expected
@@ -300,5 +303,80 @@ describe('migration 2026-11-align-remaining-tables', { skip: skip() }, () => {
       'NULL remis à la valeur par défaut, le reste intact')
     assert.deepEqual(await read(`SELECT color_id, count FROM user_color_counts ORDER BY color_id`),
       [{ color_id: 6, count: 4 }, { color_id: 7, count: 0 }])
+  })
+})
+
+// ── Troisième migration : derniers écarts ────────────────────────────────────
+
+/** reports, bans, pixel_messages et shared_zones tels qu'en prod après les deux premières migrations. */
+async function installLegacyLast(pool) {
+  await pool.query(`
+    DROP TABLE reports, bans, pixel_messages;
+    CREATE TABLE reports (
+      id SERIAL PRIMARY KEY, reporter TEXT, target_type TEXT, target_username TEXT,
+      x INTEGER, y INTEGER, reason TEXT, created_at TIMESTAMPTZ DEFAULT NOW(),
+      status VARCHAR(10) NOT NULL DEFAULT 'pending', reviewed_by VARCHAR(32), reviewed_at TIMESTAMP
+    );
+    CREATE INDEX idx_reports_status ON reports (status);
+    CREATE TABLE bans (
+      username TEXT PRIMARY KEY, reason TEXT, banned_by TEXT,
+      banned_at TIMESTAMPTZ DEFAULT NOW(), expires_at TIMESTAMPTZ
+    );
+    CREATE TABLE pixel_messages (
+      id SERIAL PRIMARY KEY, x INTEGER NOT NULL, y INTEGER NOT NULL, username TEXT NOT NULL,
+      message TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX idx_pixel_messages_xy ON pixel_messages (x, y);
+    DROP INDEX idx_sz_created_at;
+  `)
+}
+
+describe('migration 2026-11-align-last-tables', { skip: skip() }, () => {
+  before(async () => {
+    if (db.skipped) return
+    await installLegacyLast(db.pool)
+  })
+
+  it('refuse des données qu\'elle ne peut pas corriger sans risque, et dit lesquelles', async () => {
+    await truncateAll(db.pool)
+    await db.pool.query(`INSERT INTO reports (reporter, target_type) VALUES ('Alice', NULL)`)
+    await db.pool.query(`INSERT INTO pixel_messages (x, y, username, message) VALUES (1, 1, 'Bob', $1)`, ['m'.repeat(600)])
+
+    await assert.rejects(runSchemaMigrations(db.pool, MIGRATION_3), (err) => {
+      assert.ok(err instanceof SchemaMigrationError)
+      assert.match(err.message, /reports : target_type NULL ou > 10 caractères \(1 ligne\)/)
+      assert.match(err.message, /pixel_messages : message > 500 caractères \(1 ligne\)/)
+      return true
+    })
+    const index = await db.pool.query(`SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sz_created_at'`)
+    assert.equal(index.rowCount, 0, 'rien n\'a été modifié')
+  })
+
+  it('rend la base identique à init.sql en conservant les données et les heures', async () => {
+    await truncateAll(db.pool)
+    await db.pool.query(`
+      INSERT INTO reports (reporter, target_type, x, y, reason, status, created_at)
+        VALUES ('Alice', 'pixel', 1054, 1035, 'contenu offensant', 'reviewed', '2026-11-18 18:01:09+00');
+      INSERT INTO bans (username, reason, banned_by, banned_at, expires_at)
+        VALUES ('Tricheur', 'triche', 'Modo', '2026-11-18 17:37:29+00', '2026-11-19 17:37:29+00');
+      INSERT INTO pixel_messages (x, y, username, message, created_at) VALUES (3, 4, 'Bob', 'salut', '2026-11-18 12:00:00+00');
+    `)
+
+    await runSchemaMigrations(db.pool, MIGRATION_3)
+
+    assert.deepEqual(await structure(db.pool), initSchema,
+      'colonnes, types, défauts, clés et index identiques à init.sql sur toutes les tables suivies')
+
+    const read = async (sql) => (await db.pool.query(sql)).rows
+    assert.deepEqual(await read(`SELECT reporter, x, y, status, to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS t FROM reports`),
+      [{ reporter: 'Alice', x: 1054, y: 1035, status: 'reviewed', t: '2026-11-18 18:01:09' }])
+    assert.deepEqual(await read(`SELECT to_char(banned_at, 'YYYY-MM-DD HH24:MI:SS') AS b, to_char(expires_at, 'YYYY-MM-DD HH24:MI:SS') AS e FROM bans`),
+      [{ b: '2026-11-18 17:37:29', e: '2026-11-19 17:37:29' }], 'heures UTC conservées, expiration comprise')
+    assert.deepEqual(await read(`SELECT username, message, to_char(created_at, 'YYYY-MM-DD HH24:MI') AS t FROM pixel_messages`),
+      [{ username: 'Bob', message: 'salut', t: '2026-11-18 12:00' }])
+
+    // Un bannissement en cours doit toujours bloquer après conversion
+    const active = await db.pool.query(`SELECT 1 FROM bans WHERE expires_at IS NULL OR expires_at > '2026-11-19 10:00:00'`)
+    assert.equal(active.rowCount, 1)
   })
 })
