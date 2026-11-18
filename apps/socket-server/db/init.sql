@@ -1,6 +1,10 @@
 -- Schéma VoxelPlace
 -- Redis : grille de pixels et temps réel
 -- PostgreSQL : comptes utilisateurs + historique complet des pixels
+--
+-- Ce fichier ne s'exécute qu'à la création d'une base vide. Toute évolution du
+-- schéma doit aussi être écrite en migration dans src/shared/schema.js, sinon
+-- les bases existantes (la production) ne la reçoivent jamais.
 
 -- ── Comptes utilisateurs ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
