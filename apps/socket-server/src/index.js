@@ -35,6 +35,7 @@ import { initUnlockTables, processPixelPlaced, processPixelLost, processPixelOve
 import { unlockRoutes } from './features/unlocks/routes.js'
 import { createColorAccess } from './features/unlocks/color-access.js'
 import { runUnlockMigrations } from './features/unlocks/migrations.js'
+import { runSchemaMigrations } from './shared/schema.js'
 import { reportRoutes } from './features/report/routes.js'
 import { profileRoutes } from './features/profile/routes.js'
 
@@ -335,6 +336,9 @@ process.on('unhandledRejection', (reason) => {
 
 // --- Démarrage ---
 try {
+  // Le schéma d'abord : une base créée par un ancien init.sql rattrape ici les
+  // colonnes et contraintes que le code attend (voir shared/schema.js).
+  await runSchemaMigrations(pool)
   await initPixelChatTable(pool)
   await initUnlockTables(pool)
   // Avant l'écoute : aucun joueur existant ne doit voir une couleur refusée
